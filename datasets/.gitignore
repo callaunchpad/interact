@@ -1,5 +1,7 @@
-detection_data
 hico
 processed
-__pycache__
+hico2015
+unzipped
+word2vec
 vcoco
+__pycache__
