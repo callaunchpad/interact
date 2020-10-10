@@ -115,7 +115,7 @@ class HOCNN(nn.Module):
 
         summed_results = torch.add(h, torch.add(o, p)) # This might not be adding along the right axis but I can't check, omega sketch
         
-        return summed_results
+        return F.log_softmax(summed_results)
 
 class HORCNN(nn.Module):
     def __init__(self):
