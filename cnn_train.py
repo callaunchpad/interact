@@ -41,7 +41,7 @@ from PIL import Image, ImageDraw, ImageFont
 import random
 
 import utils.io as io
-from model.model import AGRNN
+#from model.model import AGRNN
 from datasets import metadata
 from utils.vis_tool import vis_img
 from datasets.hico_constants import HicoConstants
@@ -55,8 +55,9 @@ from model.cnn_model import HOCNN
 
 def run_model(args, data_const):
     # set up dataset variable
-    train_dataset = HicoDataset(data_const=data_const, subset='train', data_aug=args.data_aug, sampler=args.sampler)
-    val_dataset = HicoDataset(data_const=data_const, subset='val', data_aug=False, sampler=args.sampler, test=True)
+    # question: Do we need to change the datasets?
+    train_dataset = HicoDataset(data_const=data_const, subset='train', data_aug=args.data_aug)
+    val_dataset = HicoDataset(data_const=data_const, subset='val', data_aug=False, test=True)
     dataset = {'train': train_dataset, 'val': val_dataset}
     print('set up dataset variable successfully')
     # use default DataLoader() to load the data. 
@@ -69,7 +70,7 @@ def run_model(args, data_const):
     print('training on {}...'.format(device))
 
     #model = AGRNN(feat_type=args.feat_type, bias=args.bias, bn=args.bn, dropout=args.drop_prob, multi_attn=args.multi_attn, layer=args.layers, diff_edge=args.diff_edge)
-    model = HOCNN()
+    model = HOCNN() # edit later to take in args lol :P
 
     # calculate the amount of all the learned parameters
     parameter_num = 0
@@ -93,28 +94,28 @@ def run_model(args, data_const):
     criterion = nn.BCEWithLogitsLoss()
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.3) #the scheduler divides the lr by 10 every 150 epochs
 
-    # get the configuration of the model and save some key configurations
-    io.mkdir_if_not_exists(os.path.join(args.save_dir, args.exp_ver), recursive=True)
-    for i in range(args.layers):
-        if i==0:
-            model_config = model.CONFIG1.save_config()
-            model_config['lr'] = args.lr
-            model_config['bs'] = args.batch_size
-            model_config['layers'] = args.layers
-            model_config['multi_attn'] = args.multi_attn
-            model_config['data_aug'] = args.data_aug
-            model_config['drop_out'] = args.drop_prob
-            model_config['optimizer'] = args.optim
-            model_config['diff_edge'] = args.diff_edge
-            model_config['model_parameters'] = parameter_num
-            io.dump_json_object(model_config, os.path.join(args.save_dir, args.exp_ver, 'l1_config.json'))
-        elif i==1:
-            model_config = model.CONFIG2.save_config()
-            io.dump_json_object(model_config, os.path.join(args.save_dir, args.exp_ver, 'l2_config.json'))
-        else:
-            model_config = model.CONFIG3.save_config()
-            io.dump_json_object(model_config, os.path.join(args.save_dir, args.exp_ver, 'l3_config.json'))
-    print('save key configurations successfully...')
+    # # get the configuration of the model and save some key configurations
+    # io.mkdir_if_not_exists(os.path.join(args.save_dir, args.exp_ver), recursive=True)
+    # for i in range(args.layers):
+    #     if i==0:
+    #         model_config = model.CONFIG1.save_config()
+    #         model_config['lr'] = args.lr
+    #         model_config['bs'] = args.batch_size
+    #         model_config['layers'] = args.layers
+    #         model_config['multi_attn'] = args.multi_attn
+    #         model_config['data_aug'] = args.data_aug
+    #         model_config['drop_out'] = args.drop_prob
+    #         model_config['optimizer'] = args.optim
+    #         model_config['diff_edge'] = args.diff_edge
+    #         model_config['model_parameters'] = parameter_num
+    #         io.dump_json_object(model_config, os.path.join(args.save_dir, args.exp_ver, 'l1_config.json'))
+    #     elif i==1:
+    #         model_config = model.CONFIG2.save_config()
+    #         io.dump_json_object(model_config, os.path.join(args.save_dir, args.exp_ver, 'l2_config.json'))
+    #     else:
+    #         model_config = model.CONFIG3.save_config()
+    #         io.dump_json_object(model_config, os.path.join(args.save_dir, args.exp_ver, 'l3_config.json'))
+    # print('save key configurations successfully...')
 
     if args.train_model == 'epoch':
         epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, device, data_const)
@@ -154,7 +155,12 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 if phase == 'train':
                     model.train()
                     model.zero_grad()
-                    outputs = model(node_num, features, spatial_feat, word2vec, roi_labels)
+                    #outputs = model(node_num, features, spatial_feat, word2vec, roi_labels)
+                    # forward pass: human, objects, pairwise
+                    print("features: ", features)
+                    print("det_boxes: ", det_boxes)
+                    print("spatial_feat: ", spatial_feat)
+                    outputs = model.forward()
                     loss = criterion(outputs, edge_labels.float())
                     # import ipdb; ipdb.set_trace()
                     loss.backward()
@@ -249,64 +255,59 @@ parser = argparse.ArgumentParser(description="HOI DETECTION!")
     # optimizer
     # And more, depending on model architecture
     
-parser.add_argument('--batch_size', '--b_s', type=int, default=1,required=True,
-                    help='batch size: 1')
-parser.add_argument('--layers', type=int, default=1, required=True,
+
+parser.add_argument('--layers', type=int, default=1,
                     help='the num of gcn layers: 1') 
-parser.add_argument('--drop_prob', type=float, default=0, required=True,
+parser.add_argument('--drop_prob', type=float, default=0,
                     help='dropout parameter: 0')
-parser.add_argument('--lr', type=float, default=0.00001, required=True,
-                    help='learning rate: 0.00001')
-parser.add_argument('--gpu', type=str2bool, default='true', 
-                    help='chose to use gpu or not: True') 
-parser.add_argument('--bias', type=str2bool, default='true', required=True,
-                    help="add bias to fc layers or not: True")
-parser.add_argument('--bn', type=str2bool, default='false', 
-                    help='use batch normailzation or not: false')
-# parse.add_argument('--bn', action="store_true", default=False,
-#                     help='visualize the result or not')
-parser.add_argument('--multi_attn', '--m_a', type=str2bool, default='false', required=True,
-                     help='use multi attention or not: False')
-parser.add_argument('--data_aug', '--d_a', type=str2bool, default='false', required=True,
-                    help='data argument: false')
 
 parser.add_argument('--img_data', type=str, default='datasets/hico/images/train2015',
                     help='location of the original dataset')
 parser.add_argument('--pretrained', '-p', type=str, default=None,
                     help='location of the pretrained model file for training: None')
+
+parser.add_argument('--exp_ver', '--e_v', type=str, default='v1',
+                    help='the version of code, will create subdir in log/ && checkpoints/ ')
+parser.add_argument('--train_model', '--t_m', type=str, default='epoch',
+                    choices=['epoch', 'iteration'],
+                    help='the version of code, will create subdir in log/ && checkpoints/ ')
+
+parser.add_argument('--lr', type=float, default=0.00001,
+                    help='learning rate: 0.00001')
+parser.add_argument('--batch_size', '--b_s', type=int, default=1,
+                    help='batch size: 1')
+parser.add_argument('--bn', type=str2bool, default='false', 
+                    help='use batch normailzation or not: false')
+parser.add_argument('--gpu', type=str2bool, default='true', 
+                    help='chose to use gpu or not: True')
+parser.add_argument('--data_aug', '--d_a', type=str2bool, default='false',
+                    help='data argument: false')
 parser.add_argument('--log_dir', type=str, default='./log/hico',
                     help='path to save the log data like loss\accuracy... : ./log') 
 parser.add_argument('--save_dir', type=str, default='./checkpoints/hico',
                     help='path to save the checkpoints: ./checkpoints')
-
 parser.add_argument('--epoch', type=int, default=300,
                     help='number of epochs to train: 300') 
 parser.add_argument('--start_epoch', type=int, default=0,
-                    help='number of beginning epochs : 0') 
+                    help='number of beginning epochs: 0') 
 parser.add_argument('--print_every', type=int, default=10,
                     help='number of steps for printing training and validation loss: 10') 
 parser.add_argument('--save_every', type=int, default=10,
-                    help='number of steps for saving the model parameters: 50')                      
- 
+                    help='number of steps for saving the model parameters: 50')
+parser.add_argument('--optim',  type=str, default='sgd', choices=['sgd', 'adam'],
+                    help='which optimizer to be use: sgd ')     
 
-parser.add_argument('--exp_ver', '--e_v', type=str, default='v1', required=True,
-                    help='the version of code, will create subdir in log/ && checkpoints/ ')
-
-parser.add_argument('--train_model', '--t_m', type=str, default='epoch', required=True,
-                    choices=['epoch', 'iteration'],
-                    help='the version of code, will create subdir in log/ && checkpoints/ ')
-
-parser.add_argument('--feat_type', '--f_t', type=str, default='fc7', required=True, choices=['fc7', 'pool'],
+## EXTRA PARAMS
+parser.add_argument('--bias', type=str2bool, default='true',
+                    help="add bias to fc layers or not: True")
+parser.add_argument('--multi_attn', '--m_a', type=str2bool, default='false',
+                     help='use multi attention or not: False')
+parser.add_argument('--feat_type', '--f_t', type=str, default='fc7', choices=['fc7', 'pool'],
                     help='if using graph head, here should be \'pool\': default(fc7) ')
-
-parser.add_argument('--optim',  type=str, default='sgd', choices=['sgd', 'adam'], required=True,
-                    help='which optimizer to be use: sgd ')
-
-# parser.add_argument('--diff_edge',  type=str2bool, default='false', required=True,
-#                     help='h_h edge, h_o edge, o_o edge are different with each other')
-
-# parser.add_argument('--sampler',  type=float, default=0, 
-#                     help='h_h edge, h_o edge, o_o edge are different with each other')
+parser.add_argument('--diff_edge',  type=str2bool, default='false',
+                    help='h_h edge, h_o edge, o_o edge are different with each other')
+parser.add_argument('--sampler',  type=float, default=0, 
+                    help='h_h edge, h_o edge, o_o edge are different with each other')
 
 args = parser.parse_args()
 
