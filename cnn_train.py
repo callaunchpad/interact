@@ -48,6 +48,7 @@ from datasets.hico_constants import HicoConstants
 from datasets.hico_dataset import HicoDataset, collate_fn
 
 from model.cnn_model import HOCNN
+import json
 
 ###########################################################################################
 #                                     TRAIN/TEST MODEL                                    #
@@ -124,6 +125,10 @@ def run_model(args, data_const):
 
 def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, device, data_const):
     print('epoch training...')
+
+    # best way to access bboxes?
+    with open('datasets/processed/hico/anno_list.json') as f:
+        anno_list = json.load(f)
     
     # set visualization and create folder to save checkpoints
     writer = SummaryWriter(log_dir=args.log_dir + '/' + args.exp_ver + '/' + 'epoch_train')
@@ -157,9 +162,13 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     model.zero_grad()
                     #outputs = model(node_num, features, spatial_feat, word2vec, roi_labels)
                     # forward pass: human, objects, pairwise
-                    print("features: ", features)
-                    print("det_boxes: ", det_boxes)
-                    print("spatial_feat: ", spatial_feat)
+                    parsed_img_name = img_name[0].split(".")[0]
+                    img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
+                    img = img['hois'][0]
+                    human_bboxes = img['human_bboxes']
+                    object_bboxes = img['object_bboxes']
+                    print("bounding boxes: ", human_bboxes, object_bboxes)
+                    # PUT IN BBOXES?????? HOW TO GET IMG? PAIRWISE? MULTIPLE BBOXES?
                     outputs = model.forward()
                     loss = criterion(outputs, edge_labels.float())
                     # import ipdb; ipdb.set_trace()
