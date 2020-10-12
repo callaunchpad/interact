@@ -49,6 +49,10 @@ from datasets.hico_dataset import HicoDataset, collate_fn
 
 from model.cnn_model import HOCNN
 import json
+import cv2
+import numpy as np
+
+TRAIN_PATH = "datasets/hico/images/train2015/"
 
 ###########################################################################################
 #                                     TRAIN/TEST MODEL                                    #
@@ -162,14 +166,61 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     model.zero_grad()
                     #outputs = model(node_num, features, spatial_feat, word2vec, roi_labels)
                     # forward pass: human, objects, pairwise
-                    parsed_img_name = img_name[0].split(".")[0]
-                    img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
-                    img = img['hois'][0]
-                    human_bboxes = img['human_bboxes']
-                    object_bboxes = img['object_bboxes']
-                    print("bounding boxes: ", human_bboxes, object_bboxes)
-                    # PUT IN BBOXES?????? HOW TO GET IMG? PAIRWISE? MULTIPLE BBOXES?
-                    outputs = model.forward()
+                    print("batch size: ", args.batch_size)
+                    for i in range(args.batch_size):
+                        parsed_img_name = img_name[i].split(".")[0]
+                        img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
+                        img = img['hois'][0]
+                        human_bboxes = img['human_bboxes']
+                        object_bboxes = img['object_bboxes']
+                        
+                        # apply masks to images
+                        src = cv2.imread(TRAIN_PATH + img_name[0])
+                        human_mask = np.zeros_like(src)
+                        for bbox in human_bboxes:
+                            cv2.rectangle(human_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                        human_bbox_img = cv2.bitwise_and(src, human_mask, mask=None)
+
+                        obj_mask = np.zeros_like(src)
+                        pairwise_mask = human_mask
+                        for bbox in object_bboxes:
+                            cv2.rectangle(obj_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                            cv2.rectangle(pairwise_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                        obj_bbox_img = cv2.bitwise_and(src, obj_mask, mask=None)
+                        pairwise_bbox_img = cv2.bitwise_and(src, pairwise_mask, mask=None)
+
+                        # if u wanna see the bounding boxes :O
+                        # cv2.imshow('original', src)
+                        # cv2.imshow('human masked img', human_bbox_img)
+
+                        # cv2.imshow('object mask', obj_mask)
+                        # cv2.imshow('objected masked', obj_bbox_img)
+
+                        # cv2.imshow('pairwise_mask', pairwise_mask)
+                        # cv2.imshow('pairwise_bbox_img', pairwise_bbox_img)
+                        # cv2.waitKey(0)
+                        human_bbox_img = cv2.resize(human_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+                        obj_bbox_img = cv2.resize(obj_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+                        pairwise_bbox_img = cv2.resize(pairwise_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+
+                        human_bbox_img = torch.from_numpy(human_bbox_img)
+                        obj_bbox_img = torch.from_numpy(obj_bbox_img)
+                        pairwise_bbox_img = torch.from_numpy(pairwise_bbox_img)
+
+                        if i == 0:
+                            res_human_input = human_bbox_img.unsqueeze(0)
+                            res_obj_input = obj_bbox_img.unsqueeze(0)
+                            res_pairwise_input = pairwise_bbox_img.unsqueeze(0)
+                        else:
+                            res_human_input = torch.cat((res_human_input, human_bbox_img.unsqueeze(0)), dim=0)
+                            res_obj_input = torch.cat((res_obj_input, obj_bbox_img.unsqueeze(0)), dim=0)
+                            res_pairwise_input = torch.cat((res_pairwise_input, pairwise_bbox_img.unsqueeze(0)), dim=0)
+
+                    res_human_input = res_human_input.permute([0,3,1,2]).float()
+                    res_obj_input = res_obj_input.permute([0,3,1,2]).float()
+                    res_pairwise_input = res_pairwise_input.permute([0,3,1,2]).float()
+                    print(res_human_input.shape) # (32, 3, 64, 64)
+                    outputs = model.forward(res_human_input, res_obj_input, res_pairwise_input)
                     loss = criterion(outputs, edge_labels.float())
                     # import ipdb; ipdb.set_trace()
                     loss.backward()
@@ -283,7 +334,7 @@ parser.add_argument('--train_model', '--t_m', type=str, default='epoch',
 
 parser.add_argument('--lr', type=float, default=0.00001,
                     help='learning rate: 0.00001')
-parser.add_argument('--batch_size', '--b_s', type=int, default=1,
+parser.add_argument('--batch_size', '--b_s', type=int, default=32,
                     help='batch size: 1')
 parser.add_argument('--bn', type=str2bool, default='false', 
                     help='use batch normailzation or not: false')
