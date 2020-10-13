@@ -20,7 +20,7 @@ Human-object interaction aims to understand the relationship between humans and 
 2. Clone this repository.   
 
     ```
-    git clone https://github.com/BIGJUN777/VS-GATs.git
+    git clone https://github.com/callaunchpad/interact.git
     ```
   
 3. Install Python dependencies:   
@@ -44,7 +44,7 @@ Human-object interaction aims to understand the relationship between humans and 
 - `anno_bbox.mat`
 2. Download the word2vec model on GoogleNews [here](https://github.com/tmikolov/word2vec) and run `make` to compile the word2vec tool. Note that `make` here uses `gcc` and will most likely only work on Ubuntu/Mac machines, so if you're using a Windows machine, you should run this step under WSL.
 3. Move the entire word2vec repo into `datasets/word2vec`.
-4. Download the processed data from [HICO-DET](https://pan.baidu.com/s/1uodk72pc-lJEvAJqGn0X0A) (password: *3rax*), extract them, and copy it all into `datasets/processed`. That folder should now contain a `hico/` subfolder which contains a series of json and hdf5 files.
+4. Download the processed data from [HICO-DET](https://drive.google.com/file/d/1if8dOI7I7FSHwubo3RZeE9G0VAPeUU24/view?usp=sharing) extract them, and copy it all into `datasets/processed`. That folder should now contain a `hico/` subfolder which contains a series of json and hdf5 files.
 
 ### Training Convolutional Neural Networks
 Note: To be implemented.
