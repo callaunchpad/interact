@@ -28,6 +28,13 @@ Human-object interaction aims to understand the relationship between humans and 
     ```
     pip install -r requirements.txt
     ```
+    
+4. Add conda environment to jupyter
+
+    ```
+    conda install ipykernel
+    python -m ipykernel install --user --name=interact
+    ```
 
 ### Prepare Data
 1. Download the original [HICO-DET](http://www-personal.umich.edu/~ywchao/hico/) dataset and put it into `datasets/hico`. That folder should now contain:

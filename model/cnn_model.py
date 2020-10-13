@@ -4,6 +4,19 @@ import torch.nn.functional as F
 import torchvision
 import numpy as np
 
+
+'''
+Flatten module
+Source: https://stackoverflow.com/questions/45584907/flatten-layer-of-pytorch-build-by-sequential-container
+'''
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size()[0], -1)
+
+'''
+HO-CNN - Baseline model
+Source: https://github.com/ywchao/ho-rcnn/blob/master/models/rcnn_caffenet_ho_pconv/train.prototxt
+'''
 class HOCNN(nn.Module):
     def __init__(self):
         super(HOCNN, self).__init__()
@@ -15,7 +28,7 @@ class HOCNN(nn.Module):
                 nn.Conv2d(3, 96, kernel_size=11, stride=4),
                 nn.ReLU()
                 )
-        self.ho_pool1 = nn.MaxPool2d(3, stride=2)
+        self.ho_pool1 = nn.MaxPool2d(3, stride=2, padding=1)
         self.ho_norm1 = nn.BatchNorm2d(96)
         self.ho_conv2 = nn.Sequential(
                 nn.Conv2d(96, 256, kernel_size=5, stride=1, padding=2),
@@ -37,7 +50,8 @@ class HOCNN(nn.Module):
                 )
         self.ho_pool3 = nn.MaxPool2d(3, stride=2)
         self.ho_fcn1 = nn.Sequential(
-                nn.Linear(1024, 4096), # Input size is probably wrong cuz I'm bad at math also these dims are very small??
+                Flatten(),
+                nn.Linear(256, 4096),
                 nn.ReLU()
                 )
         self.ho_drop1 = nn.Dropout(p=0.5)
@@ -50,7 +64,7 @@ class HOCNN(nn.Module):
         
         # Layers for pairwise stream
         self.p_conv1 = nn.Sequential(
-                nn.Conv2d(2, 64, kernel_size=5, stride=1),
+                nn.Conv2d(3, 64, kernel_size=5, stride=1),
                 nn.ReLU()
                 )
         self.p_pool1 = nn.MaxPool2d(3, stride=2)
@@ -60,7 +74,8 @@ class HOCNN(nn.Module):
                 )
         self.p_pool2 = nn.MaxPool2d(3, stride=2)
         self.p_fcn1 = nn.Sequential(
-                nn.Linear(384, 256), # Input size is probably wrong cuz I'm bad at math
+                Flatten(),
+                nn.Linear(4608, 256), # Input size is probably wrong cuz I'm bad at math
                 nn.ReLU()
                 )
         self.p_fcn2 = nn.Linear(256, 600)

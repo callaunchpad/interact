@@ -190,15 +190,17 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         pairwise_bbox_img = cv2.bitwise_and(src, pairwise_mask, mask=None)
 
                         # if u wanna see the bounding boxes :O
-                        # cv2.imshow('original', src)
-                        # cv2.imshow('human masked img', human_bbox_img)
+                        
+                        #cv2.imshow('original', src)
+                        #cv2.imshow('human masked img', human_bbox_img)
 
-                        # cv2.imshow('object mask', obj_mask)
-                        # cv2.imshow('objected masked', obj_bbox_img)
+                        #cv2.imshow('object mask', obj_mask)
+                        #cv2.imshow('objected masked', obj_bbox_img)
 
-                        # cv2.imshow('pairwise_mask', pairwise_mask)
-                        # cv2.imshow('pairwise_bbox_img', pairwise_bbox_img)
-                        # cv2.waitKey(0)
+                        #cv2.imshow('pairwise_mask', pairwise_mask)
+                        #cv2.imshow('pairwise_bbox_img', pairwise_bbox_img)
+                        #cv2.waitKey(0)
+                        
                         human_bbox_img = cv2.resize(human_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
                         obj_bbox_img = cv2.resize(obj_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
                         pairwise_bbox_img = cv2.resize(pairwise_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
@@ -216,11 +218,14 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                             res_obj_input = torch.cat((res_obj_input, obj_bbox_img.unsqueeze(0)), dim=0)
                             res_pairwise_input = torch.cat((res_pairwise_input, pairwise_bbox_img.unsqueeze(0)), dim=0)
 
-                    res_human_input = res_human_input.permute([0,3,1,2]).float()
-                    res_obj_input = res_obj_input.permute([0,3,1,2]).float()
-                    res_pairwise_input = res_pairwise_input.permute([0,3,1,2]).float()
-                    print(res_human_input.shape) # (32, 3, 64, 64)
+                    res_human_input = res_human_input.permute([0,3,1,2]).float().to(device)
+                    res_obj_input = res_obj_input.permute([0,3,1,2]).float().to(device)
+                    res_pairwise_input = res_pairwise_input.permute([0,3,1,2]).float().to(device)
+                    print('human input shape: ' + str(res_human_input.shape)) # should be(32, 3, 64, 64)
+                    print('object input shape: ' + str(res_obj_input.shape)) # should be(32, 3, 64, 64)
+                    print('pairwise input shape: ' + str(res_pairwise_input.shape)) # should be (32, 2, 64, 64)
                     outputs = model.forward(res_human_input, res_obj_input, res_pairwise_input)
+                    # rip I'm not sure how to get the correct output labels :/
                     loss = criterion(outputs, edge_labels.float())
                     # import ipdb; ipdb.set_trace()
                     loss.backward()
