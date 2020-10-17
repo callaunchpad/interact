@@ -71,7 +71,7 @@ def run_model(args, data_const):
     dataloader = {'train': train_dataloader, 'val': val_dataloader}
     print('set up dataloader successfully')
 
-    device = torch.device('cuda' if torch.cuda.is_available() and args.gpu else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('training on {}...'.format(device))
 
     #model = AGRNN(feat_type=args.feat_type, bias=args.bias, bn=args.bn, dropout=args.drop_prob, multi_attn=args.multi_attn, layer=args.layers, diff_edge=args.diff_edge)
@@ -96,7 +96,8 @@ def run_model(args, data_const):
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0)
     # ipdb.set_trace()
     # criterion = nn.MultiLabelSoftMarginLoss()
-    criterion = nn.BCEWithLogitsLoss()
+    #criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.CrossEntropyLoss()
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.3) #the scheduler divides the lr by 10 every 150 epochs
 
     # # get the configuration of the model and save some key configurations
@@ -160,17 +161,20 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 spatial_feat = train_data['spatial_feat']
                 word2vec = train_data['word2vec']
                 features, spatial_feat, word2vec, edge_labels = features.to(device), spatial_feat.to(device), word2vec.to(device), edge_labels.to(device)
-                if idx == 10: break    
+                #if idx == 10: break    
                 if phase == 'train':
                     model.train()
                     model.zero_grad()
                     #outputs = model(node_num, features, spatial_feat, word2vec, roi_labels)
                     # forward pass: human, objects, pairwise
-                    print("batch size: ", args.batch_size)
+                    #print("batch size: ", args.batch_size)
+                    labels = np.zeros((args.batch_size, 600))
                     for i in range(args.batch_size):
                         parsed_img_name = img_name[i].split(".")[0]
                         img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
                         img = img['hois'][0]
+                        img_id = int(img['id']) - 1
+                        labels[i][img_id] = 1
                         human_bboxes = img['human_bboxes']
                         object_bboxes = img['object_bboxes']
                         
@@ -221,12 +225,13 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     res_human_input = res_human_input.permute([0,3,1,2]).float().to(device)
                     res_obj_input = res_obj_input.permute([0,3,1,2]).float().to(device)
                     res_pairwise_input = res_pairwise_input.permute([0,3,1,2]).float().to(device)
-                    print('human input shape: ' + str(res_human_input.shape)) # should be(32, 3, 64, 64)
-                    print('object input shape: ' + str(res_obj_input.shape)) # should be(32, 3, 64, 64)
-                    print('pairwise input shape: ' + str(res_pairwise_input.shape)) # should be (32, 2, 64, 64)
+                    #print('human input shape: ' + str(res_human_input.shape)) # should be(32, 3, 64, 64)
+                    #print('object input shape: ' + str(res_obj_input.shape)) # should be(32, 3, 64, 64)
+                    #print('pairwise input shape: ' + str(res_pairwise_input.shape)) # should be (32, 2, 64, 64)
                     outputs = model.forward(res_human_input, res_obj_input, res_pairwise_input)
                     # rip I'm not sure how to get the correct output labels :/
-                    loss = criterion(outputs, edge_labels.float())
+                    labels = torch.from_numpy(labels).long().to(device)
+                    loss = criterion(outputs, torch.max(labels, 1)[1])
                     # import ipdb; ipdb.set_trace()
                     loss.backward()
                     optimizer.step()
@@ -235,8 +240,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     model.eval()
                     # turn off the gradients for validation, save memory and computations
                     with torch.no_grad():
-                        outputs = model(node_num, features, spatial_feat, word2vec, roi_labels, validation=True)
-                        loss = criterion(outputs, edge_labels.float())
+                        outputs = model.forward(res_human_input, res_obj_input, res_pairwise_input)
+                        loss = criterion(outputs, )
                     # print result every 1000 iteration during validation
                     if idx==0 or idx % round(1000/args.batch_size)==round(1000/args.batch_size)-1:
                         # ipdb.set_trace()
