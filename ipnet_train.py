@@ -247,7 +247,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     res_obj_input = res_obj_input.permute([0,3,1,2]).float().to(device)
                     res_interaction_input = res_interaction_input.permute([0,3,1,2]).float().to(device)
                     print(res_human_input.shape) # (32, 3, 64, 64)
-                    outputs = model.forward(res_human_input, res_obj_input, res_interaction_input) 
+                    outputs = model.forward(res_human_input, res_obj_input, res_interaction_input).to(device) #
 
                     loss = criterion(outputs, edge_labels.float()) #error is here
                     ## import ipdb; ipdb.set_trace()
