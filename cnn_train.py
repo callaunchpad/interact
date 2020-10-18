@@ -66,8 +66,8 @@ def run_model(args, data_const):
     dataset = {'train': train_dataset, 'val': val_dataset}
     print('set up dataset variable successfully')
     # use default DataLoader() to load the data. 
-    train_dataloader = DataLoader(dataset=dataset['train'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-    val_dataloader = DataLoader(dataset=dataset['val'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    train_dataloader = DataLoader(dataset=dataset['train'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
+    val_dataloader = DataLoader(dataset=dataset['val'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
     dataloader = {'train': train_dataloader, 'val': val_dataloader}
     print('set up dataloader successfully')
 
@@ -142,6 +142,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
     for epoch in range(args.start_epoch, args.epoch):
         # each epoch has a training and validation step
         epoch_loss = 0
+        #print(epoch)
         for phase in ['train', 'val']:
             start_time = time.time()
             running_loss = 0.0
@@ -241,7 +242,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     # turn off the gradients for validation, save memory and computations
                     with torch.no_grad():
                         outputs = model.forward(res_human_input, res_obj_input, res_pairwise_input)
-                        loss = criterion(outputs, )
+                        loss = criterion(outputs, torch.max(labels, 1)[1])
                     # print result every 1000 iteration during validation
                     if idx==0 or idx % round(1000/args.batch_size)==round(1000/args.batch_size)-1:
                         # ipdb.set_trace()
@@ -252,9 +253,10 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         # class_img = vis_img(image, det_boxes, roi_labels, roi_scores)
                         class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.7)
                         action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.7)
-                        writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
-                        writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
-                        writer.add_text('img_name', img_name[0], epoch)
+                        #writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
+                        #writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
+                        #writer.add_text('img_name', img_name[0], epoch)
+                    #print(loss)
 
                 idx+=1
                 # accumulate loss of each batch
@@ -269,6 +271,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
             else:
                 writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': epoch_loss}, epoch)
             # print data
+            #print(epoch, args.print_every, epoch_loss)
             if (epoch % args.print_every) == 0:
                 end_time = time.time()
                 print("[{}] Epoch: {}/{} Loss: {} Execution time: {}".format(\
