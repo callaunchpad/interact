@@ -54,6 +54,13 @@ import numpy as np
 
 TRAIN_PATH = "datasets/hico/images/train2015/"
 
+def iou(human, obj):
+    # mask where 1 = human here, 0 = human not here
+    intersection = np.logical_and(human, obj)
+    union = np.logical_or(human, obj)
+    score = np.sum(intersection) / np.sum(union)
+    return score
+
 ###########################################################################################
 #                                     TRAIN/TEST MODEL                                    #
 ###########################################################################################
@@ -182,12 +189,29 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         human_bbox_img = cv2.bitwise_and(src, human_mask, mask=None)
 
                         obj_mask = np.zeros_like(src)
-                        pairwise_mask = human_mask
+                        # pairwise_mask = human_mask
                         for bbox in object_bboxes:
                             cv2.rectangle(obj_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
-                            cv2.rectangle(pairwise_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                            # cv2.rectangle(pairwise_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
                         obj_bbox_img = cv2.bitwise_and(src, obj_mask, mask=None)
-                        pairwise_bbox_img = cv2.bitwise_and(src, pairwise_mask, mask=None)
+                        # pairwise_bbox_img = cv2.bitwise_and(src, pairwise_mask, mask=None)
+
+                        interaction_mask = np.zeros_like(src)
+                        for h_bbox in human_bboxes:
+                            for o_bbox in object_bboxes:
+                                h1, h2 = np.average([h_bbox[0], h_bbox[2]]), np.average([h_bbox[1], h_bbox[3]])
+                                o1, o2 = np.average([o_bbox[0], o_bbox[2]]), np.average([o_bbox[1], o_bbox[3]])
+                                # if iou of interaction w human/obj < 0, don't do it
+                                cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
+                        interaction_bbox_img = cv2.bitwise_and(src, interaction_mask, mask=None)
+
+                        # calculate interaction vector
+                        def calc_interaction (h_bbox, o_bbox):
+                            x1 = np.average([h_bbox[0], h_bbox[2], o_bbox[0], o_bbox[2]])
+                            y1 = np.average([h_bbox[1], h_bbox[3], o_bbox[1], o_bbox[3]])
+                            x2 = np.average([h_bbox[0], h_bbox[2]])
+                            y2 = np.average([h_bbox[1], h_bbox[3]])
+                            return abs(x2 - x1), abs(y2 - y1) # is absolute value the move here?
 
                         # # if u wanna see the bounding boxes :O
                         # cv2.imshow('original', src)
@@ -196,32 +220,32 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         # cv2.imshow('object mask', obj_mask)
                         # cv2.imshow('objected masked', obj_bbox_img)
 
-                        # cv2.imshow('pairwise_mask', pairwise_mask)
-                        # cv2.imshow('pairwise_bbox_img', pairwise_bbox_img)
+                        # cv2.imshow('interaction_mask', interaction_mask)
+                        # cv2.imshow('interaction_bbox_img', interaction_bbox_img)
                         # cv2.waitKey(0)
                         
                         human_bbox_img = cv2.resize(human_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
                         obj_bbox_img = cv2.resize(obj_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
-                        pairwise_bbox_img = cv2.resize(pairwise_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+                        interaction_bbox_img = cv2.resize(interaction_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
 
                         human_bbox_img = torch.from_numpy(human_bbox_img)
                         obj_bbox_img = torch.from_numpy(obj_bbox_img)
-                        pairwise_bbox_img = torch.from_numpy(pairwise_bbox_img)
+                        interaction_bbox_img = torch.from_numpy(interaction_bbox_img)
 
                         if i == 0:
                             res_human_input = human_bbox_img.unsqueeze(0)
                             res_obj_input = obj_bbox_img.unsqueeze(0)
-                            res_pairwise_input = pairwise_bbox_img.unsqueeze(0)
+                            res_interaction_input = interaction_bbox_img.unsqueeze(0)
                         else:
                             res_human_input = torch.cat((res_human_input, human_bbox_img.unsqueeze(0)), dim=0)
                             res_obj_input = torch.cat((res_obj_input, obj_bbox_img.unsqueeze(0)), dim=0)
-                            res_pairwise_input = torch.cat((res_pairwise_input, pairwise_bbox_img.unsqueeze(0)), dim=0)
+                            res_interaction_input = torch.cat((res_interaction_input, interaction_bbox_img.unsqueeze(0)), dim=0)
 
                     res_human_input = res_human_input.permute([0,3,1,2]).float()
                     res_obj_input = res_obj_input.permute([0,3,1,2]).float()
-                    res_pairwise_input = res_pairwise_input.permute([0,3,1,2]).float()
+                    res_interaction_input = res_interaction_input.permute([0,3,1,2]).float()
                     print(res_human_input.shape) # (32, 3, 64, 64)
-                    outputs = model.forward(res_human_input, res_obj_input, res_pairwise_input)
+                    outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
 
                     loss = criterion(outputs, edge_labels.float())
                     # import ipdb; ipdb.set_trace()
