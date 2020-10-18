@@ -199,11 +199,13 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         interaction_mask = np.zeros_like(src)
                         for h_bbox in human_bboxes:
                             for o_bbox in object_bboxes:
-                                h1, h2 = np.average([h_bbox[0], h_bbox[2]]), np.average([h_bbox[1], h_bbox[3]])
-                                o1, o2 = np.average([o_bbox[0], o_bbox[2]]), np.average([o_bbox[1], o_bbox[3]])
-                                # if iou of interaction w human/obj < 0, don't do it
-                                cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
+                                h_o_iou = iou(h_bbox, o_bbox)
+                                if h_o_iou > .5: # from the 2018 baseline paper
+                                    h1, h2 = int(np.average([h_bbox[0], h_bbox[2]])), int(np.average([h_bbox[1], h_bbox[3]]))
+                                    o1, o2 = int(np.average([o_bbox[0], o_bbox[2]])), int(np.average([o_bbox[1], o_bbox[3]]))
+                                    cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
                         interaction_bbox_img = cv2.bitwise_and(src, interaction_mask, mask=None)
+                        display(Image.fromarray(interaction_bbox_img))
 
                         # calculate interaction vector
                         def calc_interaction (h_bbox, o_bbox):
@@ -241,14 +243,14 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                             res_obj_input = torch.cat((res_obj_input, obj_bbox_img.unsqueeze(0)), dim=0)
                             res_interaction_input = torch.cat((res_interaction_input, interaction_bbox_img.unsqueeze(0)), dim=0)
 
-                    res_human_input = res_human_input.permute([0,3,1,2]).float()
-                    res_obj_input = res_obj_input.permute([0,3,1,2]).float()
-                    res_interaction_input = res_interaction_input.permute([0,3,1,2]).float()
+                    res_human_input = res_human_input.permute([0,3,1,2]).float().to(device)
+                    res_obj_input = res_obj_input.permute([0,3,1,2]).float().to(device)
+                    res_interaction_input = res_interaction_input.permute([0,3,1,2]).float().to(device)
                     print(res_human_input.shape) # (32, 3, 64, 64)
-                    outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
+                    outputs = model.forward(res_human_input, res_obj_input, res_interaction_input) 
 
-                    loss = criterion(outputs, edge_labels.float())
-                    # import ipdb; ipdb.set_trace()
+                    loss = criterion(outputs, edge_labels.float()) #error is here
+                    ## import ipdb; ipdb.set_trace()
                     loss.backward()
                     optimizer.step()
 
