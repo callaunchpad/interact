@@ -1,358 +1,153 @@
-# ------------------------------------------------------------------------------
-# This code is base on
-# CornerNet (https://github.com/princeton-vl/CornerNet)
-# Copyright (c) 2018, University of Michigan
-# Licensed under the BSD 3-Clause License
-# ------------------------------------------------------------------------------
-
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import torchvision
+import numpy as np
 
-from .py_utils import TopPool, BottomPool, LeftPool, RightPool
 
-class convolution(nn.Module):
-    def __init__(self, k, inp_dim, out_dim, stride=1, with_bn=True):
-        super(convolution, self).__init__()
-
-        pad = (k - 1) // 2
-        self.conv = nn.Conv2d(inp_dim, out_dim, (k, k), padding=(pad, pad), stride=(stride, stride), bias=not with_bn)
-        self.bn   = nn.BatchNorm2d(out_dim) if with_bn else nn.Sequential()
-        self.relu = nn.ReLU(inplace=True)
-
+'''
+Flatten module
+Source: https://stackoverflow.com/questions/45584907/flatten-layer-of-pytorch-build-by-sequential-container
+'''
+class Flatten(nn.Module):
     def forward(self, x):
-        conv = self.conv(x)
-        bn   = self.bn(conv)
-        relu = self.relu(bn)
-        return relu
+        return x.view(x.size()[0], -1)
 
-class fully_connected(nn.Module):
-    def __init__(self, inp_dim, out_dim, with_bn=True):
-        super(fully_connected, self).__init__()
-        self.with_bn = with_bn
+'''
+HO-CNN - Baseline model
+Source: https://github.com/ywchao/ho-rcnn/blob/master/models/rcnn_caffenet_ho_pconv/train.prototxt
+'''
+class HOCNN(nn.Module):
+    def __init__(self):
+        super(HOCNN, self).__init__()
+        # Formula for new image size calculation W′=(W−F+2P)/S+1
+        
+        # Layers for human and object streams
+        # Input: [batch_size, input_channels, input_height, input_width] => [32, 3, 64, 64]
+        self.ho_conv1 = nn.Sequential(
+                nn.Conv2d(3, 96, kernel_size=11, stride=4),
+                nn.ReLU()
+                )
+        self.ho_pool1 = nn.MaxPool2d(3, stride=2, padding=1)
+        self.ho_norm1 = nn.BatchNorm2d(96)
+        self.ho_conv2 = nn.Sequential(
+                nn.Conv2d(96, 256, kernel_size=5, stride=1, padding=2),
+                nn.ReLU()
+                )
+        self.ho_pool2 = nn.MaxPool2d(3, stride=2)
+        self.ho_norm2 = nn.BatchNorm2d(256)
+        self.ho_conv3 = nn.Sequential(
+                nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.ho_conv4 = nn.Sequential(
+                nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.ho_conv5 = nn.Sequential(
+                nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.ho_pool3 = nn.MaxPool2d(3, stride=2)
+        self.ho_fcn1 = nn.Sequential(
+                Flatten(),
+                nn.Linear(256, 4096),
+                nn.ReLU()
+                )
+        self.ho_drop1 = nn.Dropout(p=0.5)
+        self.ho_fcn2 = nn.Sequential(
+                nn.Linear(4096, 4096),
+                nn.ReLU()
+                )
+        self.ho_drop2 = nn.Dropout(p=0.5)
+        self.ho_fcn3 = nn.Linear(4096, 600)
+        
+        # Layers for pairwise stream
+        self.p_conv1 = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=5, stride=1),
+                nn.ReLU()
+                )
+        self.p_pool1 = nn.MaxPool2d(3, stride=2)
+        self.p_conv2 = nn.Sequential(
+                nn.Conv2d(64, 32, kernel_size=5, stride=1),
+                nn.ReLU()
+                )
+        self.p_pool2 = nn.MaxPool2d(3, stride=2)
+        self.p_fcn1 = nn.Sequential(
+                Flatten(),
+                nn.Linear(4608, 256), # Input size is probably wrong cuz I'm bad at math
+                nn.ReLU()
+                )
+        self.p_fcn2 = nn.Linear(256, 600)
 
-        self.linear = nn.Linear(inp_dim, out_dim)
-        if self.with_bn:
-            self.bn = nn.BatchNorm1d(out_dim)
-        self.relu   = nn.ReLU(inplace=True)
+    def forward(self, h, o, p):
+        # h: human, o: object, p: pairwise
+        
+        # Forward pass human stream
+        
+        h = self.ho_conv1(h)
+        h = self.ho_pool1(h)
+        h = self.ho_norm1(h)
+        h = self.ho_conv2(h)
+        h = self.ho_pool2(h)
+        h = self.ho_norm2(h)
+        h = self.ho_conv3(h)
+        h = self.ho_conv4(h)
+        h = self.ho_conv5(h)
+        h = self.ho_pool3(h)
+        h = self.ho_fcn1(h)
+        h = self.ho_drop1(h)
+        h = self.ho_fcn2(h)
+        h = self.ho_drop2(h)
+        h = self.ho_fcn3(h)
+        
+        # Forward pass object stream
+        
+        o = self.ho_conv1(o)
+        o = self.ho_pool1(o)
+        o = self.ho_norm1(o)
+        o = self.ho_conv2(o)
+        o = self.ho_pool2(o)
+        o = self.ho_norm2(o)
+        o = self.ho_conv3(o)
+        o = self.ho_conv4(o)
+        o = self.ho_conv5(o)
+        o = self.ho_pool3(o)
+        o = self.ho_fcn1(o)
+        o = self.ho_drop1(o)
+        o = self.ho_fcn2(o)
+        o = self.ho_drop2(o)
+        o = self.ho_fcn3(o)
+        
+        # Forward pass pairwise stream
+        
+        p = self.p_conv1(p)
+        p = self.p_pool1(p)
+        p = self.p_conv2(p)
+        p = self.p_pool2(p)
+        p = self.p_fcn1(p)
+        p = self.p_fcn2(p)
 
-    def forward(self, x):
-        linear = self.linear(x)
-        bn     = self.bn(linear) if self.with_bn else linear
-        relu   = self.relu(bn)
-        return relu
+        summed_results = torch.add(h, torch.add(o, p)) # This might not be adding along the right axis but I can't check, omega sketch
+        
+        return F.log_softmax(summed_results)
 
-class residual(nn.Module):
-    def __init__(self, k, inp_dim, out_dim, stride=1, with_bn=True):
-        super(residual, self).__init__()
+class HORCNN(nn.Module):
+    def __init__(self):
+        super(HORCNN, self).__init__()
+        pass
 
-        self.conv1 = nn.Conv2d(inp_dim, out_dim, (3, 3), padding=(1, 1), stride=(stride, stride), bias=False)
-        self.bn1   = nn.BatchNorm2d(out_dim)
-        self.relu1 = nn.ReLU(inplace=True)
+    def forward(self, add_args_here):
+        pass
 
-        self.conv2 = nn.Conv2d(out_dim, out_dim, (3, 3), padding=(1, 1), bias=False)
-        self.bn2   = nn.BatchNorm2d(out_dim)
+    # Potentially more functions here, names should start with an underscore
 
-        self.skip  = nn.Sequential(
-            nn.Conv2d(inp_dim, out_dim, (1, 1), stride=(stride, stride), bias=False),
-            nn.BatchNorm2d(out_dim)
-        ) if stride != 1 or inp_dim != out_dim else nn.Sequential()
-        self.relu  = nn.ReLU(inplace=True)
+class DNN(nn.Module):
+    def __init__(self):
+        super(DNN, self).__init__()
+        pass
 
-    def forward(self, x):
-        conv1 = self.conv1(x)
-        bn1   = self.bn1(conv1)
-        relu1 = self.relu1(bn1)
+    def forward(self, add_args_here):
+        pass
 
-        conv2 = self.conv2(relu1)
-        bn2   = self.bn2(conv2)
-
-        skip  = self.skip(x)
-        return self.relu(bn2 + skip)
-
-def make_layer(k, inp_dim, out_dim, modules, layer=convolution, **kwargs):
-    layers = [layer(k, inp_dim, out_dim, **kwargs)]
-    for _ in range(1, modules):
-        layers.append(layer(k, out_dim, out_dim, **kwargs))
-    return nn.Sequential(*layers)
-
-def make_layer_revr(k, inp_dim, out_dim, modules, layer=convolution, **kwargs):
-    layers = []
-    for _ in range(modules - 1):
-        layers.append(layer(k, inp_dim, inp_dim, **kwargs))
-    layers.append(layer(k, inp_dim, out_dim, **kwargs))
-    return nn.Sequential(*layers)
-
-class MergeUp(nn.Module):
-    def forward(self, up1, up2):
-        return up1 + up2
-
-def make_merge_layer(dim):
-    return MergeUp()
-
-# def make_pool_layer(dim):
-#     return nn.MaxPool2d(kernel_size=2, stride=2)
-
-def make_pool_layer(dim):
-    return nn.Sequential()
-
-class pool_cross(nn.Module):
-    def __init__(self, dim, pool1, pool2, pool3, pool4):
-        super(pool_cross, self).__init__()
-        self.p1_conv1 = convolution(3, dim, 128)
-        self.p2_conv1 = convolution(3, dim, 128)
-
-        self.p_conv1 = nn.Conv2d(128, dim, (3, 3), padding=(1, 1), bias=False)
-        self.p_bn1   = nn.BatchNorm2d(dim)
-
-        self.conv1 = nn.Conv2d(dim, dim, (1, 1), bias=False)
-        self.bn1   = nn.BatchNorm2d(dim)
-        self.relu1 = nn.ReLU(inplace=True)
-
-        self.conv2 = convolution(3, dim, dim)
-
-        self.pool1 = pool1()
-        self.pool2 = pool2()
-        self.pool3 = pool3()
-        self.pool4 = pool4()
-
-    def forward(self, x):
-        # pool 1
-        p1_conv1 = self.p1_conv1(x)
-        pool1    = self.pool1(p1_conv1)
-        pool1    = self.pool3(pool1)
-
-        # pool 2
-        p2_conv1 = self.p2_conv1(x)
-        pool2    = self.pool2(p2_conv1)
-        pool2    = self.pool4(pool2)
-
-        # pool 1 + pool 2
-        p_conv1 = self.p_conv1(pool1 + pool2)
-        p_bn1   = self.p_bn1(p_conv1)
-
-        conv1 = self.conv1(x)
-        bn1   = self.bn1(conv1)
-        relu1 = self.relu1(p_bn1 + bn1)
-
-        conv2 = self.conv2(relu1)
-        return conv2
-
-def make_ct_layer(dim):
-    return center_pool(dim)
-
-class center_pool(pool_cross):
-    def __init__(self, dim):
-        super(center_pool, self).__init__(dim, TopPool, LeftPool, BottomPool, RightPool)
-
-def make_unpool_layer(dim):
-    return nn.Upsample(scale_factor=2)
-
-def make_kp_layer(cnv_dim, curr_dim, out_dim):
-    return nn.Sequential(
-        convolution(3, cnv_dim, curr_dim, with_bn=False),
-        nn.Conv2d(curr_dim, out_dim, (1, 1))
-    )
-
-def make_inter_layer(dim):
-    return residual(3, dim, dim)
-
-def make_cnv_layer(inp_dim, out_dim):
-    return convolution(3, inp_dim, out_dim)
-
-class kp_module(nn.Module):
-    def __init__(
-        self, n, dims, modules, layer=residual,
-        make_up_layer=make_layer, make_low_layer=make_layer,
-        make_hg_layer=make_layer, make_hg_layer_revr=make_layer_revr,
-        make_pool_layer=make_pool_layer, make_unpool_layer=make_unpool_layer,
-        make_merge_layer=make_merge_layer, **kwargs
-    ):
-        super(kp_module, self).__init__()
-
-        self.n   = n
-
-        curr_mod = modules[0]
-        next_mod = modules[1]
-
-        curr_dim = dims[0]
-        next_dim = dims[1]
-
-        self.up1  = make_up_layer(
-            3, curr_dim, curr_dim, curr_mod,
-            layer=layer, **kwargs
-        )
-        self.max1 = make_pool_layer(curr_dim)
-        self.low1 = make_hg_layer(
-            3, curr_dim, next_dim, curr_mod,
-            layer=layer, **kwargs
-        )
-        self.low2 = kp_module(
-            n - 1, dims[1:], modules[1:], layer=layer,
-            make_up_layer=make_up_layer,
-            make_low_layer=make_low_layer,
-            make_hg_layer=make_hg_layer,
-            make_hg_layer_revr=make_hg_layer_revr,
-            make_pool_layer=make_pool_layer,
-            make_unpool_layer=make_unpool_layer,
-            make_merge_layer=make_merge_layer,
-            **kwargs
-        ) if self.n > 1 else \
-        make_low_layer(
-            3, next_dim, next_dim, next_mod,
-            layer=layer, **kwargs
-        )
-        self.low3 = make_hg_layer_revr(
-            3, next_dim, curr_dim, curr_mod,
-            layer=layer, **kwargs
-        )
-        self.up2  = make_unpool_layer(curr_dim)
-
-        self.merge = make_merge_layer(curr_dim)
-
-    def forward(self, x):
-        up1  = self.up1(x)
-        max1 = self.max1(x)
-        low1 = self.low1(max1)
-        low2 = self.low2(low1)
-        low3 = self.low3(low2)
-        up2  = self.up2(low3)
-        return self.merge(up1, up2)
-
-
-class exkp(nn.Module):
-    def __init__(
-        self, n, nstack, dims, modules, heads, pre=None, cnv_dim=256,
-        make_tl_layer=None, make_br_layer=None, make_ct_layer=None,
-        make_cnv_layer=make_cnv_layer, make_heat_layer=make_kp_layer,
-        make_tag_layer=make_kp_layer, make_regr_layer=make_kp_layer,
-        make_up_layer=make_layer, make_low_layer=make_layer,
-        make_hg_layer=make_layer, make_hg_layer_revr=make_layer_revr,
-        make_pool_layer=make_pool_layer, make_unpool_layer=make_unpool_layer,
-        make_merge_layer=make_merge_layer, make_inter_layer=make_inter_layer,
-        kp_layer=residual
-    ):
-        super(exkp, self).__init__()
-
-        self.nstack    = nstack
-        self.heads     = heads
-
-        curr_dim = dims[0]
-
-        self.pre = nn.Sequential(
-            convolution(7, 3, 128, stride=2),
-            residual(3, 128, 256, stride=2)
-        ) if pre is None else pre
-
-        self.kps  = nn.ModuleList([
-            kp_module(
-                n, dims, modules, layer=kp_layer,
-                make_up_layer=make_up_layer,
-                make_low_layer=make_low_layer,
-                make_hg_layer=make_hg_layer,
-                make_hg_layer_revr=make_hg_layer_revr,
-                make_pool_layer=make_pool_layer,
-                make_unpool_layer=make_unpool_layer,
-                make_merge_layer=make_merge_layer
-            ) for _ in range(nstack)
-        ])
-        self.cnvs = nn.ModuleList([
-            make_cnv_layer(curr_dim, cnv_dim) for _ in range(nstack)
-        ])
-
-        self.ct_cnvs = nn.ModuleList([
-            make_ct_layer(cnv_dim) for _ in range(nstack)
-        ])
-
-        self.inters = nn.ModuleList([
-            make_inter_layer(curr_dim) for _ in range(nstack - 1)
-        ])
-
-        self.inters_ = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv2d(curr_dim, curr_dim, (1, 1), bias=False),
-                nn.BatchNorm2d(curr_dim)
-            ) for _ in range(nstack - 1)
-        ])
-        self.cnvs_   = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv2d(cnv_dim, curr_dim, (1, 1), bias=False),
-                nn.BatchNorm2d(curr_dim)
-            ) for _ in range(nstack - 1)
-        ])
-
-        ## keypoint heatmaps
-        for head in heads.keys():
-            if 'hm' or 'hm_act_f' or 'wh_act' in head:
-                module =  nn.ModuleList([
-                    make_heat_layer(
-                        cnv_dim, curr_dim, heads[head]) for _ in range(nstack)
-                ])
-                self.__setattr__(head, module)
-                for heat in self.__getattr__(head):
-                    heat[-1].bias.data.fill_(-2.19)
-            else:
-                module = nn.ModuleList([
-                    make_regr_layer(
-                        cnv_dim, curr_dim, heads[head]) for _ in range(nstack)
-                ])
-                self.__setattr__(head, module)
-
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, image):
-        # print('image shape', image.shape)
-        inter = self.pre(image)
-        outs  = []
-
-        for ind in range(self.nstack):
-            kp_, cnv_, ct_cnv_ = self.kps[ind], self.cnvs[ind], self.ct_cnvs[ind]
-            kp  = kp_(inter)
-            cnv = cnv_(kp)
-            ct_cnv = ct_cnv_(cnv)
-
-            out = {}
-            for head in self.heads:
-                layer = self.__getattr__(head)[ind]
-                y = layer(ct_cnv)
-                out[head] = y
-
-            outs.append(out)
-            if ind < self.nstack - 1:
-                inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
-                inter = self.relu(inter)
-                inter = self.inters[ind](inter)
-        return outs
-
-
-def make_hg_layer(kernel, dim0, dim1, mod, layer=convolution, **kwargs):
-    layers  = [layer(kernel, dim0, dim1, stride=2)]
-    layers += [layer(kernel, dim1, dim1) for _ in range(mod - 1)]
-    return nn.Sequential(*layers)
-
-
-class HourglassNet(exkp):
-    def __init__(self, heads, num_stacks=2):
-        n       = 5
-        dims    = [256, 256, 384, 384, 384, 512]
-        modules = [2, 2, 2, 2, 2, 4]
-
-        super(HourglassNet, self).__init__(
-            n, num_stacks, dims, modules, heads,
-            make_tl_layer=None,
-            make_br_layer=None,
-            make_ct_layer=make_ct_layer,
-            make_pool_layer=make_pool_layer,
-            make_hg_layer=make_hg_layer,
-            kp_layer=residual, cnv_dim=256
-        )
-
-
-def get_large_hourglass_net(num_layers, heads, head_conv):
-  model = HourglassNet(heads, 2)
-  return model
+    # Potentially more functions here, names should start with an underscore
