@@ -22,45 +22,84 @@ class HOCNN(nn.Module):
         super(HOCNN, self).__init__()
         # Formula for new image size calculation W′=(W−F+2P)/S+1
         
-        # Layers for human and object streams
+        # Layers for human stream
         # Input: [batch_size, input_channels, input_height, input_width] => [32, 3, 64, 64]
-        self.ho_conv1 = nn.Sequential(
+        self.h_conv1 = nn.Sequential(
                 nn.Conv2d(3, 96, kernel_size=11, stride=4),
                 nn.ReLU()
                 )
-        self.ho_pool1 = nn.MaxPool2d(3, stride=2, padding=1)
-        self.ho_norm1 = nn.BatchNorm2d(96)
-        self.ho_conv2 = nn.Sequential(
+        self.h_pool1 = nn.MaxPool2d(3, stride=2, padding=1)
+        self.h_norm1 = nn.BatchNorm2d(96)
+        self.h_conv2 = nn.Sequential(
                 nn.Conv2d(96, 256, kernel_size=5, stride=1, padding=2),
                 nn.ReLU()
                 )
-        self.ho_pool2 = nn.MaxPool2d(3, stride=2)
-        self.ho_norm2 = nn.BatchNorm2d(256)
-        self.ho_conv3 = nn.Sequential(
+        self.h_pool2 = nn.MaxPool2d(3, stride=2)
+        self.h_norm2 = nn.BatchNorm2d(256)
+        self.h_conv3 = nn.Sequential(
                 nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1),
                 nn.ReLU()
                 )
-        self.ho_conv4 = nn.Sequential(
+        self.h_conv4 = nn.Sequential(
                 nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1),
                 nn.ReLU()
                 )
-        self.ho_conv5 = nn.Sequential(
+        self.h_conv5 = nn.Sequential(
                 nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1),
                 nn.ReLU()
                 )
-        self.ho_pool3 = nn.MaxPool2d(3, stride=2)
-        self.ho_fcn1 = nn.Sequential(
+        self.h_pool3 = nn.MaxPool2d(3, stride=2)
+        self.h_fcn1 = nn.Sequential(
                 Flatten(),
                 nn.Linear(256, 4096),
                 nn.ReLU()
                 )
-        self.ho_drop1 = nn.Dropout(p=0.5)
-        self.ho_fcn2 = nn.Sequential(
+        self.h_drop1 = nn.Dropout(p=0.5)
+        self.h_fcn2 = nn.Sequential(
                 nn.Linear(4096, 4096),
                 nn.ReLU()
                 )
-        self.ho_drop2 = nn.Dropout(p=0.5)
-        self.ho_fcn3 = nn.Linear(4096, 600)
+        self.h_drop2 = nn.Dropout(p=0.5)
+        self.h_fcn3 = nn.Linear(4096, 600)
+
+        # Layers for object stream
+        self.o_conv1 = nn.Sequential(
+                nn.Conv2d(3, 96, kernel_size=11, stride=4),
+                nn.ReLU()
+                )
+        self.o_pool1 = nn.MaxPool2d(3, stride=2, padding=1)
+        self.o_norm1 = nn.BatchNorm2d(96)
+        self.o_conv2 = nn.Sequential(
+                nn.Conv2d(96, 256, kernel_size=5, stride=1, padding=2),
+                nn.ReLU()
+                )
+        self.o_pool2 = nn.MaxPool2d(3, stride=2)
+        self.o_norm2 = nn.BatchNorm2d(256)
+        self.o_conv3 = nn.Sequential(
+                nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.o_conv4 = nn.Sequential(
+                nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.o_conv5 = nn.Sequential(
+                nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.o_pool3 = nn.MaxPool2d(3, stride=2)
+        self.o_fcn1 = nn.Sequential(
+                Flatten(),
+                nn.Linear(256, 4096),
+                nn.ReLU()
+                )
+        self.o_drop1 = nn.Dropout(p=0.5)
+        self.o_fcn2 = nn.Sequential(
+                nn.Linear(4096, 4096),
+                nn.ReLU()
+                )
+        self.o_drop2 = nn.Dropout(p=0.5)
+        self.o_fcn3 = nn.Linear(4096, 600)
         
         # Layers for pairwise stream
         self.p_conv1 = nn.Sequential(
@@ -85,39 +124,39 @@ class HOCNN(nn.Module):
         
         # Forward pass human stream
         
-        h = self.ho_conv1(h)
-        h = self.ho_pool1(h)
-        h = self.ho_norm1(h)
-        h = self.ho_conv2(h)
-        h = self.ho_pool2(h)
-        h = self.ho_norm2(h)
-        h = self.ho_conv3(h)
-        h = self.ho_conv4(h)
-        h = self.ho_conv5(h)
-        h = self.ho_pool3(h)
-        h = self.ho_fcn1(h)
-        h = self.ho_drop1(h)
-        h = self.ho_fcn2(h)
-        h = self.ho_drop2(h)
-        h = self.ho_fcn3(h)
+        h = self.h_conv1(h)
+        h = self.h_pool1(h)
+        h = self.h_norm1(h)
+        h = self.h_conv2(h)
+        h = self.h_pool2(h)
+        h = self.h_norm2(h)
+        h = self.h_conv3(h)
+        h = self.h_conv4(h)
+        h = self.h_conv5(h)
+        h = self.h_pool3(h)
+        h = self.h_fcn1(h)
+        h = self.h_drop1(h)
+        h = self.h_fcn2(h)
+        h = self.h_drop2(h)
+        h = self.h_fcn3(h)
         
         # Forward pass object stream
         
-        o = self.ho_conv1(o)
-        o = self.ho_pool1(o)
-        o = self.ho_norm1(o)
-        o = self.ho_conv2(o)
-        o = self.ho_pool2(o)
-        o = self.ho_norm2(o)
-        o = self.ho_conv3(o)
-        o = self.ho_conv4(o)
-        o = self.ho_conv5(o)
-        o = self.ho_pool3(o)
-        o = self.ho_fcn1(o)
-        o = self.ho_drop1(o)
-        o = self.ho_fcn2(o)
-        o = self.ho_drop2(o)
-        o = self.ho_fcn3(o)
+        o = self.o_conv1(o)
+        o = self.o_pool1(o)
+        o = self.o_norm1(o)
+        o = self.o_conv2(o)
+        o = self.o_pool2(o)
+        o = self.o_norm2(o)
+        o = self.o_conv3(o)
+        o = self.o_conv4(o)
+        o = self.o_conv5(o)
+        o = self.o_pool3(o)
+        o = self.o_fcn1(o)
+        o = self.o_drop1(o)
+        o = self.o_fcn2(o)
+        o = self.o_drop2(o)
+        o = self.o_fcn3(o)
         
         # Forward pass pairwise stream
         
