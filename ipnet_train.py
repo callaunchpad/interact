@@ -61,6 +61,7 @@ def iou(human, obj):
     score = np.sum(intersection) / np.sum(union)
     return score
 
+
 ###########################################################################################
 #                                     TRAIN/TEST MODEL                                    #
 ###########################################################################################
@@ -73,12 +74,12 @@ def run_model(args, data_const):
     dataset = {'train': train_dataset, 'val': val_dataset}
     print('set up dataset variable successfully')
     # use default DataLoader() to load the data. 
-    train_dataloader = DataLoader(dataset=dataset['train'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-    val_dataloader = DataLoader(dataset=dataset['val'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    train_dataloader = DataLoader(dataset=dataset['train'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
+    val_dataloader = DataLoader(dataset=dataset['val'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
     dataloader = {'train': train_dataloader, 'val': val_dataloader}
     print('set up dataloader successfully')
 
-    device = torch.device('cuda' if torch.cuda.is_available() and args.gpu else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('training on {}...'.format(device))
 
     #model = AGRNN(feat_type=args.feat_type, bias=args.bias, bn=args.bn, dropout=args.drop_prob, multi_attn=args.multi_attn, layer=args.layers, diff_edge=args.diff_edge)
@@ -103,7 +104,8 @@ def run_model(args, data_const):
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0)
     # ipdb.set_trace()
     # criterion = nn.MultiLabelSoftMarginLoss()
-    criterion = nn.BCEWithLogitsLoss()
+    #criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.CrossEntropyLoss()
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.3) #the scheduler divides the lr by 10 every 150 epochs
 
     # # get the configuration of the model and save some key configurations
@@ -148,6 +150,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
     for epoch in range(args.start_epoch, args.epoch):
         # each epoch has a training and validation step
         epoch_loss = 0
+        #print(epoch)
         for phase in ['train', 'val']:
             start_time = time.time()
             running_loss = 0.0
@@ -167,17 +170,20 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 spatial_feat = train_data['spatial_feat']
                 word2vec = train_data['word2vec']
                 features, spatial_feat, word2vec, edge_labels = features.to(device), spatial_feat.to(device), word2vec.to(device), edge_labels.to(device)
-                if idx == 10: break    
+                #if idx == 10: break    
                 if phase == 'train':
                     model.train()
                     model.zero_grad()
                     #outputs = model(node_num, features, spatial_feat, word2vec, roi_labels)
                     # forward pass: human, objects, pairwise
-                    print("batch size: ", args.batch_size)
+                    #print("batch size: ", args.batch_size)
+                    labels = np.zeros((args.batch_size, 600))
                     for i in range(args.batch_size):
                         parsed_img_name = img_name[i].split(".")[0]
                         img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
                         img = img['hois'][0]
+                        img_id = int(img['id']) - 1
+                        labels[i][img_id] = 1
                         human_bboxes = img['human_bboxes']
                         object_bboxes = img['object_bboxes']
                         
@@ -205,7 +211,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                                     o1, o2 = int(np.average([o_bbox[0], o_bbox[2]])), int(np.average([o_bbox[1], o_bbox[3]]))
                                     cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
                         interaction_bbox_img = cv2.bitwise_and(src, interaction_mask, mask=None)
-                        display(Image.fromarray(interaction_bbox_img))
+                        # display(Image.fromarray(interaction_bbox_img))
 
                         # calculate interaction vector
                         def calc_interaction (h_bbox, o_bbox):
@@ -215,16 +221,17 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                             y2 = np.average([h_bbox[1], h_bbox[3]])
                             return abs(x2 - x1), abs(y2 - y1) # is absolute value the move here?
 
-                        # # if u wanna see the bounding boxes :O
-                        # cv2.imshow('original', src)
-                        # cv2.imshow('human masked img', human_bbox_img)
+                        # if u wanna see the bounding boxes :O
+                        
+                        #cv2.imshow('original', src)
+                        #cv2.imshow('human masked img', human_bbox_img)
 
-                        # cv2.imshow('object mask', obj_mask)
-                        # cv2.imshow('objected masked', obj_bbox_img)
+                        #cv2.imshow('object mask', obj_mask)
+                        #cv2.imshow('objected masked', obj_bbox_img)
 
-                        # cv2.imshow('interaction_mask', interaction_mask)
-                        # cv2.imshow('interaction_bbox_img', interaction_bbox_img)
-                        # cv2.waitKey(0)
+                        #cv2.imshow('pairwise_mask', pairwise_mask)
+                        #cv2.imshow('pairwise_bbox_img', pairwise_bbox_img)
+                        #cv2.waitKey(0)
                         
                         human_bbox_img = cv2.resize(human_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
                         obj_bbox_img = cv2.resize(obj_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
@@ -246,11 +253,13 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     res_human_input = res_human_input.permute([0,3,1,2]).float().to(device)
                     res_obj_input = res_obj_input.permute([0,3,1,2]).float().to(device)
                     res_interaction_input = res_interaction_input.permute([0,3,1,2]).float().to(device)
-                    print(res_human_input.shape) # (32, 3, 64, 64)
-                    outputs = model.forward(res_human_input, res_obj_input, res_interaction_input).to(device) #
-
-                    loss = criterion(outputs, edge_labels.float()) #error is here
-                    ## import ipdb; ipdb.set_trace()
+                    #print('human input shape: ' + str(res_human_input.shape)) # should be(32, 3, 64, 64)
+                    #print('object input shape: ' + str(res_obj_input.shape)) # should be(32, 3, 64, 64)
+                    #print('pairwise input shape: ' + str(res_pairwise_input.shape)) # should be (32, 2, 64, 64)
+                    outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
+                    labels = torch.from_numpy(labels).long().to(device)
+                    loss = criterion(outputs, torch.max(labels, 1)[1])
+                    # import ipdb; ipdb.set_trace()
                     loss.backward()
                     optimizer.step()
 
@@ -258,8 +267,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     model.eval()
                     # turn off the gradients for validation, save memory and computations
                     with torch.no_grad():
-                        outputs = model(node_num, features, spatial_feat, word2vec, roi_labels, validation=True)
-                        loss = criterion(outputs, edge_labels.float())
+                        outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
+                        loss = criterion(outputs, torch.max(labels, 1)[1])
                     # print result every 1000 iteration during validation
                     if idx==0 or idx % round(1000/args.batch_size)==round(1000/args.batch_size)-1:
                         # ipdb.set_trace()
@@ -270,9 +279,10 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         # class_img = vis_img(image, det_boxes, roi_labels, roi_scores)
                         class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.7)
                         action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.7)
-                        writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
-                        writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
-                        writer.add_text('img_name', img_name[0], epoch)
+                        #writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
+                        #writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
+                        #writer.add_text('img_name', img_name[0], epoch)
+                    #print(loss)
 
                 idx+=1
                 # accumulate loss of each batch
@@ -287,6 +297,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
             else:
                 writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': epoch_loss}, epoch)
             # print data
+            #print(epoch, args.print_every, epoch_loss)
             if (epoch % args.print_every) == 0:
                 end_time = time.time()
                 print("[{}] Epoch: {}/{} Loss: {} Execution time: {}".format(\
@@ -342,9 +353,7 @@ parser = argparse.ArgumentParser(description="HOI DETECTION!")
     # Number of epochs to save checkpoint
     # optimizer
     # And more, depending on model architecture
-
-
-
+    
 
 parser.add_argument('--layers', type=int, default=1,
                     help='the num of gcn layers: 1') 
