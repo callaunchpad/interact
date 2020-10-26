@@ -142,7 +142,7 @@ class HOPOSECNN(nn.Module):
         
         # Combination convolution layer
         self.comb_conv1 = nn.Sequential(
-                nn.Conv1d(1, 1, kernel_size=1, stride=1),
+                nn.Conv1d(4, 1, kernel_size=1, stride=1),
                 nn.ReLU(),
                 )
         self.comb_flat1 = Flatten()
@@ -203,10 +203,9 @@ class HOPOSECNN(nn.Module):
         po = self.po_fcn1(po)
         po = self.po_fcn2(po)
 
-        summed_results = torch.add(h, torch.add(o, torch.add(pa, po)))
+        results = torch.stack([h, o, pa, po], dim=1)
         
-        results = summed_results.unsqueeze(1)
         results = self.comb_conv1(results)
         results = self.comb_flat1(results)
-        
+
         return F.log_softmax(results)
