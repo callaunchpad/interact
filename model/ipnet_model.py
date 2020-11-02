@@ -103,7 +103,7 @@ class HOCNN(nn.Module):
         
         # Layers for pairwise stream
         self.p_conv1 = nn.Sequential(
-                nn.Conv2d(3, 64, kernel_size=5, stride=1),
+                nn.Conv2d(5, 64, kernel_size=5, stride=1),
                 nn.ReLU()
                 )
         self.p_pool1 = nn.MaxPool2d(3, stride=2)

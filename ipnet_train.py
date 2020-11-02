@@ -47,7 +47,7 @@ from utils.vis_tool import vis_img
 from datasets.hico_constants import HicoConstants
 from datasets.hico_dataset import HicoDataset, collate_fn
 
-from model.cnn_model import HOCNN
+from model.ipnet_model import HOCNN
 import json
 import cv2
 import numpy as np
@@ -154,7 +154,9 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
         for phase in ['train', 'val']:
             start_time = time.time()
             running_loss = 0.0
+            running_correct = 0
             idx = 0
+            
             
             HicoDataset.data_sample_count=0
             for data in tqdm(dataloader[phase]): 
@@ -170,7 +172,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 spatial_feat = train_data['spatial_feat']
                 word2vec = train_data['word2vec']
                 features, spatial_feat, word2vec, edge_labels = features.to(device), spatial_feat.to(device), word2vec.to(device), edge_labels.to(device)
-                #if idx == 10: break    
+                #if idx == 10: break
+                num_correct = 0    
                 if phase == 'train':
                     model.train()
                     model.zero_grad()
@@ -190,36 +193,39 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         # apply masks to images
                         src = cv2.imread(TRAIN_PATH + img_name[0])
                         human_mask = np.zeros_like(src)
+                        interaction_mask = human_mask
                         for bbox in human_bboxes:
                             cv2.rectangle(human_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
                         human_bbox_img = cv2.bitwise_and(src, human_mask, mask=None)
 
                         obj_mask = np.zeros_like(src)
-                        # pairwise_mask = human_mask
                         for bbox in object_bboxes:
                             cv2.rectangle(obj_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
-                            # cv2.rectangle(pairwise_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                            cv2.rectangle(interaction_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
                         obj_bbox_img = cv2.bitwise_and(src, obj_mask, mask=None)
                         # pairwise_bbox_img = cv2.bitwise_and(src, pairwise_mask, mask=None)
-
-                        interaction_mask = np.zeros_like(src)
+                        
+                        # interaction_vector = np.zeros_like(src)[:,:,:2]
+                        interaction_vector = np.zeros([64, 64, 2])
                         for h_bbox in human_bboxes:
                             for o_bbox in object_bboxes:
                                 h_o_iou = iou(h_bbox, o_bbox)
-                                if h_o_iou > .5: # from the 2018 baseline paper
-                                    h1, h2 = int(np.average([h_bbox[0], h_bbox[2]])), int(np.average([h_bbox[1], h_bbox[3]]))
-                                    o1, o2 = int(np.average([o_bbox[0], o_bbox[2]])), int(np.average([o_bbox[1], o_bbox[3]]))
-                                    cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
+                                h1, h2 = int(np.average([h_bbox[0], h_bbox[2]])), int(np.average([h_bbox[1], h_bbox[3]]))
+                                o1, o2 = int(np.average([o_bbox[0], o_bbox[2]])), int(np.average([o_bbox[1], o_bbox[3]]))
+                                cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
+
+                                # calculate interaction vector
+                                x1 = np.average([h_bbox[0], h_bbox[2], o_bbox[0], o_bbox[2]])
+                                y1 = np.average([h_bbox[1], h_bbox[3], o_bbox[1], o_bbox[3]])
+                                x2 = np.average([h_bbox[0], h_bbox[2]])
+                                y2 = np.average([h_bbox[1], h_bbox[3]])
+                                iv_x, iv_y = x2 - x1, y2 - y1
+
+                                interaction_vector[int(x1 / src.shape[0]), int(y1 / src.shape[1]), 0] = iv_x
+                                interaction_vector[int(x1 / src.shape[0]), int(y1 / src.shape[1]), 1] = iv_y
+                                
                         interaction_bbox_img = cv2.bitwise_and(src, interaction_mask, mask=None)
                         # display(Image.fromarray(interaction_bbox_img))
-
-                        # calculate interaction vector
-                        def calc_interaction (h_bbox, o_bbox):
-                            x1 = np.average([h_bbox[0], h_bbox[2], o_bbox[0], o_bbox[2]])
-                            y1 = np.average([h_bbox[1], h_bbox[3], o_bbox[1], o_bbox[3]])
-                            x2 = np.average([h_bbox[0], h_bbox[2]])
-                            y2 = np.average([h_bbox[1], h_bbox[3]])
-                            return abs(x2 - x1), abs(y2 - y1) # is absolute value the move here?
 
                         # if u wanna see the bounding boxes :O
                         
@@ -236,6 +242,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         human_bbox_img = cv2.resize(human_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
                         obj_bbox_img = cv2.resize(obj_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
                         interaction_bbox_img = cv2.resize(interaction_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+                        
+                        interaction_bbox_img = np.concatenate([interaction_bbox_img, interaction_vector], axis=-1)
 
                         human_bbox_img = torch.from_numpy(human_bbox_img)
                         obj_bbox_img = torch.from_numpy(obj_bbox_img)
@@ -258,8 +266,14 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     #print('pairwise input shape: ' + str(res_pairwise_input.shape)) # should be (32, 2, 64, 64)
                     outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
                     labels = torch.from_numpy(labels).long().to(device)
+
+                    preds = torch.argmax(outputs, dim=1)
+                    ground_labels = torch.max(labels, 1)[1]
+                    for accuracy_iterator in range(len(ground_labels)):
+                        if preds[accuracy_iterator] == ground_labels[accuracy_iterator]:
+                            num_correct += 1
+
                     loss = criterion(outputs, torch.max(labels, 1)[1])
-                    # import ipdb; ipdb.set_trace()
                     loss.backward()
                     optimizer.step()
 
@@ -269,6 +283,12 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     with torch.no_grad():
                         outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
                         loss = criterion(outputs, torch.max(labels, 1)[1])
+
+                        preds = torch.argmax(outputs, dim=1)
+                        ground_labels = torch.max(labels, 1)[1]
+                        for accuracy_iterator in range(len(ground_labels)):
+                            if preds[accuracy_iterator] == ground_labels[accuracy_iterator]:
+                                num_correct += 1
                     # print result every 1000 iteration during validation
                     if idx==0 or idx % round(1000/args.batch_size)==round(1000/args.batch_size)-1:
                         # ipdb.set_trace()
@@ -282,20 +302,25 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         #writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
                         #writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
                         #writer.add_text('img_name', img_name[0], epoch)
+
                     #print(loss)
 
                 idx+=1
                 # accumulate loss of each batch
-                running_loss += loss.item() * edge_labels.shape[0]
+                running_loss += loss.item() * args.batch_size
+                running_correct += num_correct
             # calculate the loss and accuracy of each epoch
             epoch_loss = running_loss / len(dataset[phase])
+            epoch_accuracy = 100 * running_correct / len(dataset[phase])
             # import ipdb; ipdb.set_trace()
             # log trainval datas, and visualize them in the same graph
             if phase == 'train':
                 train_loss = epoch_loss 
+                train_accuracy = epoch_accuracy
                 HicoDataset.displaycount() 
             else:
                 writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': epoch_loss}, epoch)
+                writer.add_scalars('trainval_accuracy_epoch', {'train': train_accuracy, 'val': epoch_accuracy}, epoch)
             # print data
             #print(epoch, args.print_every, epoch_loss)
             if (epoch % args.print_every) == 0:
@@ -323,7 +348,6 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
 
     writer.close()
     print('Finishing training!')
-
 
 ###########################################################################################
 #                                 SET SOME ARGUMENTS                                      #
