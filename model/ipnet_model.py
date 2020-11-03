@@ -17,9 +17,9 @@ class Flatten(nn.Module):
 HO-CNN - Baseline model
 Source: https://github.com/ywchao/ho-rcnn/blob/master/models/rcnn_caffenet_ho_pconv/train.prototxt
 '''
-class HOCNN(nn.Module):
+class IPNet(nn.Module):
     def __init__(self):
-        super(HOCNN, self).__init__()
+        super(IPNet, self).__init__()
         # Formula for new image size calculation W′=(W−F+2P)/S+1
         
         # Layers for human stream
@@ -170,23 +170,3 @@ class HOCNN(nn.Module):
         summed_results = torch.add(h, torch.add(o, p)) # This might not be adding along the right axis but I can't check, omega sketch
         
         return F.log_softmax(summed_results)
-
-class HORCNN(nn.Module):
-    def __init__(self):
-        super(HORCNN, self).__init__()
-        pass
-
-    def forward(self, add_args_here):
-        pass
-
-    # Potentially more functions here, names should start with an underscore
-
-class DNN(nn.Module):
-    def __init__(self):
-        super(DNN, self).__init__()
-        pass
-
-    def forward(self, add_args_here):
-        pass
-
-    # Potentially more functions here, names should start with an underscore
