@@ -41,7 +41,6 @@ def iou(human, obj):
     score = np.sum(intersection) / np.sum(union)
     return score
 
-
 ###########################################################################################
 #                                     TRAIN/TEST MODEL                                    #
 ###########################################################################################
@@ -98,14 +97,18 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
     io.mkdir_if_not_exists(os.path.join(args.save_dir, args.exp_ver, 'epoch_train'), recursive=True)
 
     for epoch in range(args.start_epoch, args.epoch):
-        epoch_loss = 0
+        
+        train_loss = 0
+        train_accuracy = 0
+        val_loss = 0
+        val_accuracy = 0
+
         for phase in ['train', 'val']:
             start_time = time.time()
             running_loss = 0.0
             running_correct = 0
             idx = 0
             
-            HicoDataset.data_sample_count=0
             for data in tqdm(dataloader[phase]): 
                 train_data = data
                 img_name = train_data['img_name']
@@ -119,81 +122,79 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 spatial_feat = train_data['spatial_feat']
                 word2vec = train_data['word2vec']
                 features, spatial_feat, word2vec, edge_labels = features.to(device), spatial_feat.to(device), word2vec.to(device), edge_labels.to(device)
-                if idx == 10: break
-                num_correct = 0   
+
+                labels = np.zeros((args.batch_size, 600))
+
+                for i in range(args.batch_size):
+                    parsed_img_name = img_name[i].split(".")[0]
+                    img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
+                    img = img['hois'][0]
+                    img_id = int(img['id']) - 1
+                    labels[i][img_id] = 1
+                    human_bboxes = img['human_bboxes']
+                    object_bboxes = img['object_bboxes']
+                    
+                    # apply masks to images
+                    src = cv2.imread(TRAIN_PATH + img_name[0])
+                    human_mask = np.zeros_like(src)
+                    interaction_mask = human_mask
+                    for bbox in human_bboxes:
+                        cv2.rectangle(human_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                    human_bbox_img = cv2.bitwise_and(src, human_mask, mask=None)
+
+                    obj_mask = np.zeros_like(src)
+                    for bbox in object_bboxes:
+                        cv2.rectangle(obj_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                        cv2.rectangle(interaction_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
+                    obj_bbox_img = cv2.bitwise_and(src, obj_mask, mask=None)
+                    
+                    interaction_vector = np.zeros([64, 64, 2])
+                    for h_bbox in human_bboxes:
+                        for o_bbox in object_bboxes:
+                            h_o_iou = iou(h_bbox, o_bbox)
+                            h1, h2 = int(np.average([h_bbox[0], h_bbox[2]])), int(np.average([h_bbox[1], h_bbox[3]]))
+                            o1, o2 = int(np.average([o_bbox[0], o_bbox[2]])), int(np.average([o_bbox[1], o_bbox[3]]))
+                            cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
+
+                            # calculate interaction vector
+                            x1 = np.average([h_bbox[0], h_bbox[2], o_bbox[0], o_bbox[2]])
+                            y1 = np.average([h_bbox[1], h_bbox[3], o_bbox[1], o_bbox[3]])
+                            x2 = np.average([h_bbox[0], h_bbox[2]])
+                            y2 = np.average([h_bbox[1], h_bbox[3]])
+                            iv_x, iv_y = x2 - x1, y2 - y1
+
+                            interaction_vector[int(x1 / src.shape[0]), int(y1 / src.shape[1]), 0] = iv_x
+                            interaction_vector[int(x1 / src.shape[0]), int(y1 / src.shape[1]), 1] = iv_y
+                            
+                    # interaction_bbox_img = cv2.bitwise_and(src, interaction_mask, mask=None)
+                    interaction_bbox_img = interaction_mask
+                    
+                    human_bbox_img = cv2.resize(human_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+                    obj_bbox_img = cv2.resize(obj_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+                    interaction_bbox_img = cv2.resize(interaction_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
+                    
+                    interaction_bbox_img = np.concatenate([interaction_bbox_img, interaction_vector], axis=-1)
+
+                    human_bbox_img = torch.from_numpy(human_bbox_img)
+                    obj_bbox_img = torch.from_numpy(obj_bbox_img)
+                    interaction_bbox_img = torch.from_numpy(interaction_bbox_img)
+
+                    if i == 0:
+                        res_human_input = human_bbox_img.unsqueeze(0)
+                        res_obj_input = obj_bbox_img.unsqueeze(0)
+                        res_interaction_input = interaction_bbox_img.unsqueeze(0)
+                    else:
+                        res_human_input = torch.cat((res_human_input, human_bbox_img.unsqueeze(0)), dim=0)
+                        res_obj_input = torch.cat((res_obj_input, obj_bbox_img.unsqueeze(0)), dim=0)
+                        res_interaction_input = torch.cat((res_interaction_input, interaction_bbox_img.unsqueeze(0)), dim=0)
+
+                res_human_input = res_human_input.permute([0,3,1,2]).float().to(device)
+                res_obj_input = res_obj_input.permute([0,3,1,2]).float().to(device)
+                res_interaction_input = res_interaction_input.permute([0,3,1,2]).float().to(device)   
 
                 if phase == 'train':
                     model.train()
                     model.zero_grad()
-
-                    labels = np.zeros((args.batch_size, 600))
-
-                    for i in range(args.batch_size):
-                        parsed_img_name = img_name[i].split(".")[0]
-                        img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
-                        img = img['hois'][0]
-                        img_id = int(img['id']) - 1
-                        labels[i][img_id] = 1
-                        human_bboxes = img['human_bboxes']
-                        object_bboxes = img['object_bboxes']
-                        
-                        # apply masks to images
-                        src = cv2.imread(TRAIN_PATH + img_name[0])
-                        human_mask = np.zeros_like(src)
-                        interaction_mask = human_mask
-                        for bbox in human_bboxes:
-                            cv2.rectangle(human_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
-                        human_bbox_img = cv2.bitwise_and(src, human_mask, mask=None)
-
-                        obj_mask = np.zeros_like(src)
-                        for bbox in object_bboxes:
-                            cv2.rectangle(obj_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
-                            cv2.rectangle(interaction_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 255), thickness=-1)
-                        obj_bbox_img = cv2.bitwise_and(src, obj_mask, mask=None)
-                        
-                        interaction_vector = np.zeros([64, 64, 2])
-                        for h_bbox in human_bboxes:
-                            for o_bbox in object_bboxes:
-                                h_o_iou = iou(h_bbox, o_bbox)
-                                h1, h2 = int(np.average([h_bbox[0], h_bbox[2]])), int(np.average([h_bbox[1], h_bbox[3]]))
-                                o1, o2 = int(np.average([o_bbox[0], o_bbox[2]])), int(np.average([o_bbox[1], o_bbox[3]]))
-                                cv2.rectangle(interaction_mask, (h1, h2), (o1, o2), (255, 255, 255), thickness=-1)
-
-                                # calculate interaction vector
-                                x1 = np.average([h_bbox[0], h_bbox[2], o_bbox[0], o_bbox[2]])
-                                y1 = np.average([h_bbox[1], h_bbox[3], o_bbox[1], o_bbox[3]])
-                                x2 = np.average([h_bbox[0], h_bbox[2]])
-                                y2 = np.average([h_bbox[1], h_bbox[3]])
-                                iv_x, iv_y = x2 - x1, y2 - y1
-
-                                interaction_vector[int(x1 / src.shape[0]), int(y1 / src.shape[1]), 0] = iv_x
-                                interaction_vector[int(x1 / src.shape[0]), int(y1 / src.shape[1]), 1] = iv_y
-                                
-                        # interaction_bbox_img = cv2.bitwise_and(src, interaction_mask, mask=None)
-                        interaction_bbox_img = interaction_mask
-                        
-                        human_bbox_img = cv2.resize(human_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
-                        obj_bbox_img = cv2.resize(obj_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
-                        interaction_bbox_img = cv2.resize(interaction_bbox_img, (64, 64), interpolation=cv2.INTER_AREA)
-                        
-                        interaction_bbox_img = np.concatenate([interaction_bbox_img, interaction_vector], axis=-1)
-
-                        human_bbox_img = torch.from_numpy(human_bbox_img)
-                        obj_bbox_img = torch.from_numpy(obj_bbox_img)
-                        interaction_bbox_img = torch.from_numpy(interaction_bbox_img)
-
-                        if i == 0:
-                            res_human_input = human_bbox_img.unsqueeze(0)
-                            res_obj_input = obj_bbox_img.unsqueeze(0)
-                            res_interaction_input = interaction_bbox_img.unsqueeze(0)
-                        else:
-                            res_human_input = torch.cat((res_human_input, human_bbox_img.unsqueeze(0)), dim=0)
-                            res_obj_input = torch.cat((res_obj_input, obj_bbox_img.unsqueeze(0)), dim=0)
-                            res_interaction_input = torch.cat((res_interaction_input, interaction_bbox_img.unsqueeze(0)), dim=0)
-
-                    res_human_input = res_human_input.permute([0,3,1,2]).float().to(device)
-                    res_obj_input = res_obj_input.permute([0,3,1,2]).float().to(device)
-                    res_interaction_input = res_interaction_input.permute([0,3,1,2]).float().to(device)
   
                     outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
                     labels = torch.from_numpy(labels).long().to(device)
@@ -202,67 +203,51 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     ground_labels = torch.max(labels, 1)[1]
                     for accuracy_iterator in range(len(ground_labels)):
                         if preds[accuracy_iterator] == ground_labels[accuracy_iterator]:
-                            num_correct += 1
+                            running_correct += 1
 
                     loss = criterion(outputs, torch.max(labels, 1)[1])
+                    running_loss += loss.item() * args.batch_size
                     loss.backward()
                     optimizer.step()
+                    
 
                 else:
                     model.eval()
                     # turn off the gradients for validation, save memory and computations
                     with torch.no_grad():
                         outputs = model.forward(res_human_input, res_obj_input, res_interaction_input)
+                        labels = torch.from_numpy(labels).long().to(device)
                         loss = criterion(outputs, torch.max(labels, 1)[1])
+                        running_loss += loss.item() * args.batch_size
 
                         preds = torch.argmax(outputs, dim=1)
                         ground_labels = torch.max(labels, 1)[1]
                         for accuracy_iterator in range(len(ground_labels)):
                             if preds[accuracy_iterator] == ground_labels[accuracy_iterator]:
-                                num_correct += 1
-
-                    # print result every 1000 iteration during validation
-                    if idx==0 or idx % round(1000/args.batch_size)==round(1000/args.batch_size)-1:
-                        # image = Image.open(os.path.join(args.img_data, img_name[0])).convert('RGB')
-                        # image_temp = image.copy()
-                        # raw_outputs = nn.Sigmoid()(outputs[0:int(edge_num[0])])
-                        # raw_outputs = raw_outputs.cpu().detach().numpy()
-                        # class_img = vis_img(image, det_boxes, roi_labels, roi_scores)
-                        # class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.7)
-                        # action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.7)
-                        
-                        # writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
-                        # writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
-                        # writer.add_text('img_name', img_name[0], epoch)
+                                running_correct += 1
 
                 idx += 1
 
-                # accumulate loss of each batch
-                running_loss += loss.item() * args.batch_size
-                running_correct += num_correct
-
             # calculate the loss and accuracy of each epoch
-            epoch_loss = running_loss / len(dataset[phase])
-            epoch_accuracy = 100 * running_correct / len(dataset[phase])
+            loss = running_loss / len(dataset[phase])
+            accuracy = running_correct / len(dataset[phase])
 
-            # log trainval datas, and visualize them in the same graph
+            # log trainval data
             if phase == 'train':
-                train_loss = epoch_loss 
-                train_accuracy = epoch_accuracy
-                HicoDataset.displaycount() 
+                train_loss, train_accuracy = loss, accuracy
             else:
-                writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': epoch_loss}, epoch)
-                writer.add_scalars('trainval_accuracy_epoch', {'train': train_accuracy, 'val': epoch_accuracy}, epoch)
+                val_loss, val_accuracy = loss, accuracy
+                writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': val_loss}, epoch)
+                writer.add_scalars('trainval_accuracy_epoch', {'train': train_accuracy, 'val': val_accuracy}, epoch)
 
             if (epoch % args.print_every) == 0:
                 end_time = time.time()
                 print("[{}] Epoch: {}/{} Loss: {} Execution time: {}".format(\
-                        phase, epoch+1, args.epoch, epoch_loss, (end_time-start_time)))
+                        phase, epoch+1, args.epoch, val_loss, (end_time-start_time)))
                         
         # scheduler.step()
-
         # save model
-        if epoch_loss<0.0405 or epoch % args.save_every == (args.save_every - 1) and epoch >= (200-1):
+        if val_loss<0.0405 or epoch % args.save_every == (args.save_every - 1) and epoch >= (200-1):
             checkpoint = { 
                             'lr': args.lr,
                            'b_s': args.batch_size,
@@ -313,8 +298,8 @@ parser.add_argument('--train_model', '--t_m', type=str, default='epoch',
                     choices=['epoch', 'iteration'],
                     help='the version of code, will create subdir in log/ && checkpoints/ ')
 
-parser.add_argument('--lr', type=float, default=0.00001,
-                    help='learning rate: 0.00001')
+parser.add_argument('--lr', type=float, default=0.0001,
+                    help='learning rate: 0.0001')
 parser.add_argument('--batch_size', '--b_s', type=int, default=32,
                     help='batch size: 1')
 parser.add_argument('--bn', type=str2bool, default='false', 
