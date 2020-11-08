@@ -14,10 +14,13 @@ from PIL import Image, ImageDraw, ImageFont
 from datasets import metadata
 
 def vis_img(img, bboxs, labels, scores=None, raw_action=None, score_thresh=0.8, data_gt=False):
+    print(".5a")
     try:
+        print("a")
         if len(bboxs) == 0:
             return img    
-        # font = ImageFont.truetype(font='/usr/share/fonts/truetype/freefont/FreeMono.ttf', size=25)
+        print("b")
+        font = ImageFont.truetype(font='/usr/share/fonts/truetype/freefont/FreeMono.ttf', size=25)
         print("BEFORE")
         font = ImageFont.truetype("arial.ttf", 15)
         print("here!!")
@@ -188,7 +191,7 @@ def vis_img(img, bboxs, labels, scores=None, raw_action=None, score_thresh=0.8, 
         return img
 
     except Exception as e:
-        print("Error:", e)
+        print("Error_vis_img_wtf:", e)
         print("bboxs: {}, labels: {}" .format(bboxs, labels))
     finally:
         pass
@@ -235,7 +238,7 @@ def vis_img_frcnn(img, bboxs, labels, scores=None, raw_action=None, score_thresh
         return img
 
     except Exception as e:
-        print("Error:", e)
+        print("Error_vis_img_frcnn:", e)
         print("bboxs: {}, labels: {}" .format(bboxs, labels))
     finally:
         pass
