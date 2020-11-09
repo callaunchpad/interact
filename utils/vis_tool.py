@@ -14,16 +14,13 @@ from PIL import Image, ImageDraw, ImageFont
 from datasets import metadata
 
 def vis_img(img, bboxs, labels, scores=None, raw_action=None, score_thresh=0.8, data_gt=False):
-    print(".5a")
     try:
-        print("a")
         if len(bboxs) == 0:
             return img    
-        print("b")
-        font = ImageFont.truetype(font='/usr/share/fonts/truetype/freefont/FreeMono.ttf', size=25)
-        print("BEFORE")
-        font = ImageFont.truetype("arial.ttf", 15)
-        print("here!!")
+        # font for Latte
+        font = ImageFont.truetype(font="/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", size=15)
+        # font = ImageFont.truetype(font='/usr/share/fonts/truetype/freefont/FreeMono.ttf', size=25)
+        # font = ImageFont.truetype("arial.ttf", 15)
         line_width = 3
         if data_gt:
             Drawer = ImageDraw.Draw(img)
