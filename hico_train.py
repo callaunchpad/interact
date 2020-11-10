@@ -154,7 +154,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         # class_img = vis_img(image, det_boxes, roi_labels, roi_scores)
                         class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.7)
                         action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.7)
-                        display(class_img, action_img)
+                        # display(class_img, action_img)
                         writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
                         writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
                         writer.add_text('img_name', img_name[0], epoch)
