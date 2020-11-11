@@ -37,6 +37,8 @@ from matplotlib import pyplot as plt
 
 #%matplotlib inline
 
+print(os.environ)
+
 # Set random seed for reproducibility
 torch.manual_seed(21)
 np.random.seed(21)
