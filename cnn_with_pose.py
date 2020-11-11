@@ -66,8 +66,8 @@ print_batch_every = 100
 print_epoch_every = 1
 
 # set the cache size [0 means infinite]
-max_img_cache_size = 0#40000
-max_pose_cache_size = 0#40000
+max_img_cache_size = 1 #40000
+max_pose_cache_size = 1 #40000
 
 print('Running experiment ' + exp_ver)
 
