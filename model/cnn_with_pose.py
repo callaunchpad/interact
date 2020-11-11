@@ -209,4 +209,4 @@ class HOPOSECNN(nn.Module):
         
         summed_results = torch.add(h, torch.add(o, torch.add(pa, po)))
 
-        return F.log_softmax(summed_results)
+        return summed_results
