@@ -40,6 +40,70 @@ class Predictor(nn.Module):
         # output = self.sigmoid(output)
         return {'pred': pred}
 
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size()[0], -1)
+
+class BGCNN(nn.Module):
+    def __init__(self):
+        super(BGCNN, self).__init__()
+        self.conv1 = nn.Sequential(
+                nn.Conv2d(3, 96, kernel_size=11, stride=4),
+                nn.ReLU()
+                )
+        self.pool1 = nn.MaxPool2d(3, stride=2, padding=1)
+        self.norm1 = nn.BatchNorm2d(96)
+        self.conv2 = nn.Sequential(
+                nn.Conv2d(96, 256, kernel_size=5, stride=1, padding=2),
+                nn.ReLU()
+                )
+        self.pool2 = nn.MaxPool2d(3, stride=2)
+        self.norm2 = nn.BatchNorm2d(256)
+        self.conv3 = nn.Sequential(
+                nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.conv4 = nn.Sequential(
+                nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.conv5 = nn.Sequential(
+                nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+                )
+        self.pool3 = nn.MaxPool2d(3, stride=2)
+        self.fcn1 = nn.Sequential(
+                Flatten(),
+                nn.Linear(256, 4096),
+                nn.ReLU()
+                )
+        self.drop1 = nn.Dropout(p=0.5)
+        self.fcn2 = nn.Sequential(
+                nn.Linear(4096, 117),
+                nn.ReLU()
+                )
+        self.drop2 = nn.Dropout(p=0.5)
+        self.fcn3 = nn.Linear(32, 117)
+
+    def forward(self, input):
+        out = self.conv1(input)
+        out = self.pool1(out)
+        out = self.norm1(out)
+        out = self.conv2(out)
+        out = self.pool2(out)
+        out = self.norm2(out)
+        out = self.conv3(out)
+        out = self.conv4(out)
+        out = self.conv5(out)
+        out = self.pool3(out)
+        out = self.fcn1(out)
+        out = self.drop1(out)
+        out = self.fcn2(out)
+        out = self.drop2(out)
+        out = out.permute([1, 0])
+        out = self.fcn3(out)
+        return out
+
 class AGRNN(nn.Module):
     def __init__(self, feat_type='fc7', bias=True, bn=True, dropout=None, multi_attn=False, layer=1, diff_edge=True):
         super(AGRNN, self).__init__()
@@ -50,6 +114,8 @@ class AGRNN(nn.Module):
         self.CONFIG1 = CONFIGURATION(feat_type=feat_type, layer=1, bias=bias, bn=bn, dropout=dropout, multi_attn=multi_attn)
         self.CONFIG2 = CONFIGURATION(feat_type=feat_type, layer=2, bias=bias, bn=bn, dropout=dropout, multi_attn=multi_attn)
         self.CONFIG3 = CONFIGURATION(feat_type=feat_type, layer=3, bias=bias, bn=bn, dropout=dropout, multi_attn=multi_attn)
+
+        self.BGCNN = BGCNN()
 
         if not feat_type=='fc7':
             self.graph_head = TowMLPHead(self.CONFIG1.G_H_L_S, self.CONFIG1.G_H_A, self.CONFIG1.G_H_B, self.CONFIG1.G_H_BN, self.CONFIG1.G_H_D)
@@ -148,7 +214,7 @@ class AGRNN(nn.Module):
 
         return edge_list, h_node_list, obj_node_list, h_h_e_list, o_o_e_list, h_o_e_list, readout_edge_list, readout_h_h_e_list, readout_h_o_e_list
 
-    def forward(self, node_num=None, feat=None, spatial_feat=None, word2vec=None, roi_label=None, validation=False, choose_nodes=None, remove_nodes=None):
+    def forward(self, node_num=None, feat=None, spatial_feat=None, word2vec=None, roi_label=None, validation=False, choose_nodes=None, remove_nodes=None, bg=None):
         # set up graph
         batch_graph, batch_h_node_list, batch_obj_node_list, batch_h_h_e_list, batch_o_o_e_list, batch_h_o_e_list, batch_readout_edge_list, batch_readout_h_h_e_list, batch_readout_h_o_e_list = [], [], [], [], [], [], [], [], []
         node_num_cum = np.cumsum(node_num) # !IMPORTANT
@@ -206,13 +272,19 @@ class AGRNN(nn.Module):
                 batch_graph.apply_nodes(self.h_node_update, batch_h_node_list+batch_obj_node_list)
             batch_graph.apply_edges(self.edge_readout, tuple(zip(*(batch_readout_h_o_e_list+batch_readout_h_h_e_list))))
 
+        bg_output = self.BGCNN(bg)
+        batch_graph_readout = batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred']
+        batch_graph_readout_bg = torch.matmul(batch_graph_readout, bg_output)
+
         # import ipdb; ipdb.set_trace()
         if self.training or validation:
             # return batch_graph.edges[tuple(zip(*(batch_readout_h_o_e_list+batch_readout_h_h_e_list)))].data['pred']
             # !NOTE: cannot use "batch_readout_h_o_e_list+batch_readout_h_h_e_list" because of the wrong order
-            return batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred']
+            # print(batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred'].shape)
+            # print(batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred'].shape)
+            return batch_graph_readout_bg
         else:
-            return batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred'], \
+            return batch_graph_readout_bg, \
                    batch_graph.nodes[batch_h_node_list].data['alpha'], \
                    batch_graph.nodes[batch_h_node_list].data['alpha_lang'] 
 
