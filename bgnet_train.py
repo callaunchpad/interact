@@ -43,8 +43,8 @@ def run_model(args, data_const):
     dataset = {'train': train_dataset, 'val': val_dataset}
     print('set up dataset variable successfully')
     # use default DataLoader() to load the data. 
-    train_dataloader = DataLoader(dataset=dataset['train'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-    val_dataloader = DataLoader(dataset=dataset['val'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    train_dataloader = DataLoader(dataset=dataset['train'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
+    val_dataloader = DataLoader(dataset=dataset['val'], batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
     dataloader = {'train': train_dataloader, 'val': val_dataloader}
     print('set up dataloader successfully')
 
@@ -138,8 +138,12 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 word2vec = train_data['word2vec']
                 features, spatial_feat, word2vec, edge_labels = features.to(device), spatial_feat.to(device), word2vec.to(device), edge_labels.to(device)
                 # if idx == 10: break 
-
+                # print(len(img_name))
+                # print(args.batch_size)
+                
                 for i in range(args.batch_size):
+                    # print(len(img_name))
+                    # print(len(img_name[i]))
                     parsed_img_name = img_name[i].split(".")[0]
                     img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
                     img = img['hois'][0]
