@@ -9,7 +9,9 @@ import numpy as np
 from PIL import Image
 import cv2
 import json
+
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from model.cnn_model import HOCNN
 
@@ -56,6 +58,18 @@ with open('../datasets/processed/hico/hoi_list.json') as f:
 print('COCO dictionary and HOI list loaded')
 
 app = FastAPI()
+
+origins = [
+    '*'
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/api/hocnn/predict")
 async def hocnn_predict(image: UploadFile = File(...)):
