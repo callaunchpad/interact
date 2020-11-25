@@ -7,3 +7,6 @@ v2_nl2_2020-11-20_09-57 (18% val accuracy) - [here](https://drive.google.com/fil
 
 #### HicoPose
 
+v4_nl2_2020-11-24_21-32 (20% val accuracy) - [here](https://drive.google.com/file/d/109uZ2low_rjOTj-0Xtif0wxOIG0Bhs6s/view?usp=sharing)
+- [train_val_accuracy](https://i.snipboard.io/p6tKrQ.jpg)
+- [train_val_loss](https://i.snipboard.io/nTDJ7j.jpg)
