@@ -133,7 +133,7 @@ print('Calculated loss weights')
 '''
 
 # Define loss function
-#criterion = nn.BCEWithLogitsLoss()
+criterion = nn.BCEWithLogitsLoss()
 #criterion = nn.BCEWithLogitsLoss(reduction='none')
 #criterion = nn.BCEWithLogitsLoss(pos_weight=loss_weights)
 #criterion = nn.CrossEntropyLoss()
