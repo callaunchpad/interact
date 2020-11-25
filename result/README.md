@@ -1,10 +1,9 @@
 ### Links to results
 
 #### Hico
-v1 65 epochs 97.62 val - [here](https://drive.google.com/file/d/1ACxjKPzJ3Q0mBa0-E4GZS7prfMC7GfSK/view?usp=sharing)
+v2_nl2_2020-11-20_09-57 (18% val accuracy) - [here](https://drive.google.com/file/d/11YAiUZTUdFxBeR74T7Ek7JNCwAu6iXye/view?usp=sharing)
+- [train_val_accuracy](https://i.snipboard.io/vWzqpC.jpg)
+- [train_val_loss](https://i.snipboard.io/oO8NDz.jpg)
 
 #### HicoPose
-no_smart_combine 60 epochs 99.54 val - [here](https://drive.google.com/file/d/1dm2V_ws9J8tzRJl9WmOHJa5ow8u0pr76/view?usp=sharing)
 
-#### TensorBoard
-v1 and no_smart_combine - [here](https://snipboard.io/OFg3Rd.jpg)
