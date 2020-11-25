@@ -52,11 +52,12 @@ print('training on {}'.format(device))
 # Define arguments
 batch_size = 32
 epochs = 300
-initial_lr = 0.00001
+initial_lr = 0.0005
+l2_weight_decay = 0.00005
 
 feat_type = 'fc7'
 data_aug = False
-exp_ver = 'v4_n_' + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+exp_ver = 'v4_nl2_' + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
 # w = weighted loss, n = normalized (/255), l2 = l2 norm
 save_dir = './checkpoints/hicopose'
 log_dir = './log/hicopose'
@@ -109,11 +110,12 @@ with open('datasets/processed/hico/hoi_cls_count.json') as f:
 print('Calculated loss weights')
 
 # Define loss function
-criterion = nn.BCEWithLogitsLoss(pos_weight = loss_weights)
+criterion = nn.BCEWithLogitsLoss()
+#criterion = nn.BCEWithLogitsLoss(pos_weight = loss_weights)
 #criterion = nn.CrossEntropyLoss()
 
 # Define optimizer
-optimizer = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=0)
+optimizer = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=l2_weight_decay)
 #optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0)
 
 # Setup visualization

@@ -128,19 +128,19 @@ with open('datasets/processed/hico/hoi_cls_count.json') as f:
         samples_per_class[int(hoi_class) - 1] = hoi_class_count[hoi_class]
     loss_weights = greatest_sample / samples_per_class
     loss_weights = torch.tensor(loss_weights).float().to(device)
-'''
     
 print('Calculated loss weights')
+'''
 
 # Define loss function
-criterion = nn.BCEWithLogitsLoss()
+#criterion = nn.BCEWithLogitsLoss()
 #criterion = nn.BCEWithLogitsLoss(reduction='none')
 #criterion = nn.BCEWithLogitsLoss(pos_weight=loss_weights)
 #criterion = nn.CrossEntropyLoss()
 
 # Define optimizer
-#optimizer = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=l2_weight_decay)
-optimizer = adabound.AdaBound(model.parameters(), lr=initial_lr, final_lr=final_lr, weight_decay=l2_weight_decay)
+optimizer = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=l2_weight_decay)
+#optimizer = adabound.AdaBound(model.parameters(), lr=initial_lr, final_lr=final_lr, weight_decay=l2_weight_decay)
 #optimizer = optim.SGD(model.parameters(), lr=initial_lr, momentum=0.9, weight_decay=0)
 
 # Setup visualization
