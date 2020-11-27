@@ -2,7 +2,7 @@
  * Declare config
  */
 const config = {
-    'api': 'http://latte.csua.berkeley.edu:8080/api/'
+    'api': 'https://interact.jimmyli.us/api/'
 }
 
 /**
