@@ -19,7 +19,8 @@ def vis_img(img, bboxs, labels, scores=None, raw_action=None, score_thresh=0.8, 
             return img    
         # font = ImageFont.truetype(font='/usr/share/fonts/truetype/freefont/FreeMono.ttf', size=25)
         print("BEFORE")
-        font = ImageFont.truetype("arial.ttf", 15)
+        # font = ImageFont.truetype("arial.ttf", 15)
+        font = ImageFont.load_default()
         print("here!!")
         line_width = 3
         if data_gt:

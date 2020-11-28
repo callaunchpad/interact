@@ -140,7 +140,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 # if idx == 10: break 
                 # print(len(img_name))
                 # print(args.batch_size)
-                
+
                 for i in range(args.batch_size):
                     # print(len(img_name))
                     # print(len(img_name[i]))
@@ -152,7 +152,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     object_bboxes = img['object_bboxes']
 
                     # apply masks to images
-                    src = cv2.imread(TRAIN_PATH + img_name[0])
+                    src = cv2.imread(TRAIN_PATH + img_name[i])
                     mask = np.ones_like(src) * 255
  
                     for bbox in human_bboxes:
@@ -196,16 +196,20 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     # print result every 1000 iteration during validation
                     if idx==0 or idx % round(1000/args.batch_size)==round(1000/args.batch_size)-1:
                         # ipdb.set_trace()
+                        
                         image = Image.open(os.path.join(args.img_data, img_name[0])).convert('RGB')
+
                         image_temp = image.copy()
                         raw_outputs = nn.Sigmoid()(outputs[0:int(edge_num[0])])
                         raw_outputs = raw_outputs.cpu().detach().numpy()
-                        # class_img = vis_img(image, det_boxes, roi_labels, roi_scores)
-                        # class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.7)
-                        # action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.7)
-                        # writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
-                        # writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
-                        # writer.add_text('img_name', img_name[0], epoch)
+                        class_img = vis_img(image, det_boxes, roi_labels, roi_scores)
+                        class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.7)
+                        action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.7)
+                        # print(class_img)
+                        # print(class_img.shape)
+                        writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
+                        writer.add_image('action_detection', np.array(action_img).transpose(2,0,1))
+                        writer.add_text('img_name', img_name[0], epoch)
 
                 idx+=1
                 # accumulate loss of each batch
@@ -227,17 +231,19 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         
         # scheduler.step()
         # save model
-        if epoch_loss<0.0405 or epoch % args.save_every == (args.save_every - 1) and epoch >= (200-1):
+        # if epoch_loss<0.0405 or epoch % args.save_every == (args.save_every - 1) and epoch >= (200-1):
+        if epoch % 5 == 0:
+            # print("GOT HEREEEEEEEE")
             checkpoint = { 
                             'lr': args.lr,
-                           'b_s': args.batch_size,
-                          'bias': args.bias, 
+                            'b_s': args.batch_size,
+                            'bias': args.bias, 
                             'bn': args.bn, 
-                       'dropout': args.drop_prob,
+                        'dropout': args.drop_prob,
                         'layers': args.layers,
-                     'feat_type': args.feat_type,
+                        'feat_type': args.feat_type,
                     'multi_head': args.multi_attn,
-                     'diff_edge': args.diff_edge,
+                        'diff_edge': args.diff_edge,
                     'state_dict': model.state_dict()
             }
             save_name = "checkpoint_" + str(epoch+1) + '_epoch.pth'
