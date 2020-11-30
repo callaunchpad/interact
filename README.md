@@ -1,5 +1,6 @@
-# DRG: Dual Relation Graph for Human-Object Interaction Detection
-Official Pytorch implementation for [DRG: Dual Relation Graph for Human-Object Interaction Detection (ECCV 2020)](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123570681.pdf).
+# DRG with Pose: Dual Relation Graph for Human-Object Interaction Detection with OpenPOSE information
+
+## Official Pytorch implementation for [DRG: Dual Relation Graph for Human-Object Interaction Detection (ECCV 2020)](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123570681.pdf).
 
 See the [project page](http://chengao.vision/DRG/) for more details. Please contact Jiarui Xu (jiaruixu@vt.edu) if you have any questions related to implementation details.
 
