@@ -1,0 +1,11 @@
+.idea/
+__pycache__
+_ext
+*.pyc
+*.so
+maskrcnn_benchmark.egg-info/
+build/
+dist/
+Data/
+output/
+pretrained_model
