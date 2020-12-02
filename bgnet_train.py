@@ -70,10 +70,8 @@ def run_model(args, data_const):
         optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0)
     else:
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0)
-    # ipdb.set_trace()
-    # criterion = nn.MultiLabelSoftMarginLoss()
+
     criterion = nn.BCEWithLogitsLoss()
-    # criterion = nn.CrossEntropyLoss()
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.3) #the scheduler divides the lr by 10 every 150 epochs
 
     # get the configuration of the model and save some key configurations
@@ -117,16 +115,19 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
     for epoch in range(args.start_epoch, args.epoch):
         # each epoch has a training and validation step
         epoch_loss = 0
+        epoch_accuracy = 0
+
         for phase in ['train', 'val']:
             start_time = time.time()
             running_loss = 0.0
+            running_correct = 0
+            running_total = 0
             idx = 0
             
             HicoDataset.data_sample_count=0
             for data in tqdm(dataloader[phase]): 
                 train_data = data
                 img_name = train_data['img_name']
-                # print(img_name)
                 det_boxes = train_data['det_boxes']
                 roi_labels = train_data['roi_labels']
                 roi_scores = train_data['roi_scores']
@@ -137,13 +138,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 spatial_feat = train_data['spatial_feat']
                 word2vec = train_data['word2vec']
                 features, spatial_feat, word2vec, edge_labels = features.to(device), spatial_feat.to(device), word2vec.to(device), edge_labels.to(device)
-                # if idx == 10: break 
-                # print(len(img_name))
-                # print(args.batch_size)
 
                 for i in range(args.batch_size):
-                    # print(len(img_name))
-                    # print(len(img_name[i]))
                     parsed_img_name = img_name[i].split(".")[0]
                     img = [x for x in anno_list if x['global_id'] == parsed_img_name][0]
                     img = img['hois'][0]
@@ -175,15 +171,32 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 if phase == 'train':
                     model.train()
                     model.zero_grad()
-                    # print(len(node_num))
-                    # print(features.shape)
-                    # print(spatial_feat.shape)
+
                     outputs = model(node_num, features, spatial_feat, word2vec, roi_labels, bg=res_background_input)
-                    # print(outputs.shape)
-                    # print(edge_labels.float().shape)
-                    # print(edge_labels)
+
+                    # preds = torch.argmax(outputs, dim=1)
+                    # ground_truth = torch.argmax(edge_labels, dim=1)
+
+                    preds_conf, preds_id = torch.max(outputs, dim=1)
+                    truth_conf, truth_id = torch.max(edge_labels, dim=1)
+
+                    label_iter = 0
+                    for i in range(args.batch_size):
+                        curr_preds = preds_conf[label_iter:label_iter + edge_num[i]]
+                        curr_truth = truth_conf[label_iter:label_iter + edge_num[i]]
+                        top_pred = preds_id[torch.argmax(curr_preds)]
+                        top_truth = truth_id[torch.argmax(curr_truth)]
+
+                        if top_pred == top_truth:
+                            running_correct += 1
+
+                    # for i in range(len(preds)):
+                    #     running_total += 1
+                    #     if preds[i] == ground_truth[i]:
+                    #         running_correct += 1
+
                     loss = criterion(outputs, edge_labels.float())
-                    # import ipdb; ipdb.set_trace()
+
                     loss.backward()
                     optimizer.step()
 
@@ -193,6 +206,28 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     with torch.no_grad():
                         outputs = model(node_num, features, spatial_feat, word2vec, roi_labels, bg=res_background_input, validation=True)
                         loss = criterion(outputs, edge_labels.float())
+                        
+                        preds_conf, preds_id = torch.max(outputs, dim=1)
+                        truth_conf, truth_id = torch.max(edge_labels, dim=1)
+
+                        label_iter = 0
+                        for i in range(args.batch_size):
+                            curr_preds = preds_conf[label_iter:label_iter + edge_num[i]]
+                            curr_truth = truth_conf[label_iter:label_iter + edge_num[i]]
+                            top_pred = preds_id[torch.argmax(curr_preds)]
+                            top_truth = truth_id[torch.argmax(curr_truth)]
+
+                            if top_pred == top_truth:
+                                running_correct += 1
+
+                        # preds = torch.argmax(outputs, dim=1)
+                        # ground_truth = torch.argmax(edge_labels, dim=1)
+
+                        # for i in range(len(preds)):
+                        #     running_total += 1
+                        #     if preds[i] == ground_truth[i]:
+                        #         running_correct += 1
+
                     # print result every 1000 iteration during validation
                     if idx==0 or idx % round(1000/args.batch_size)==round(1000/args.batch_size)-1:
                         # ipdb.set_trace()
@@ -214,14 +249,19 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 idx+=1
                 # accumulate loss of each batch
                 running_loss += loss.item() * edge_labels.shape[0]
+
             # calculate the loss and accuracy of each epoch
             epoch_loss = running_loss / len(dataset[phase])
+            # epoch_accuracy = 1.0 * running_correct / running_total
+            epoch_accuracy = 1.0 * running_correct / args.batch_size
             # import ipdb; ipdb.set_trace()
             # log trainval datas, and visualize them in the same graph
             if phase == 'train':
                 train_loss = epoch_loss 
+                train_accuracy = epoch_accuracy
                 HicoDataset.displaycount() 
             else:
+                writer.add_scalars('trainval_loss_accuracy', {'train': train_accuracy, 'val': epoch_accuracy}, epoch)
                 writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': epoch_loss}, epoch)
             # print data
             if (epoch % args.print_every) == 0:
@@ -232,7 +272,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
         # scheduler.step()
         # save model
         # if epoch_loss<0.0405 or epoch % args.save_every == (args.save_every - 1) and epoch >= (200-1):
-        if epoch % 5 == 0:
+        if epoch % 10 == 0:
             # print("GOT HEREEEEEEEE")
             checkpoint = { 
                             'lr': args.lr,
@@ -327,46 +367,3 @@ args = parser.parse_args()
 if __name__ == "__main__":
     data_const = HicoConstants(feat_type=args.feat_type)
     run_model(args, data_const)
-
-
-
-                    # # import ipdb; ipdb.set_trace()
-                    # if args.data_aug:
-                    #     # filter ROIs
-                    #     keep_inds = list(set(np.where(node_labels.cpu().numpy() == 1)[0]))
-                    #     original_inds = np.arange(node_num[0])
-                    #     remain_inds = np.delete(original_inds, keep_inds, axis=0)
-                    #     random_select_inds = np.array(random.sample(remain_inds.tolist(), int(remain_inds.shape[0]/2)))
-                    #     choose_inds = sorted(np.hstack((keep_inds,random_select_inds)))
-                    #     # remove_inds = [x for x in original_inds if x not in choose_inds]
-                    #     if len(keep_inds)==0 or len(choose_inds)==1:
-                    #         continue
-                        
-                    #     # re-construct the data 
-                    #     try:
-                    #         spatial_feat_inds = []
-                    #         for i in choose_inds:
-                    #             for j in choose_inds:
-                    #                 if i == j: 
-                    #                     continue
-                    #                 if j == 0:
-                    #                     ind = i * (node_num[0]-1) + j
-                    #                 else:
-                    #                     ind = i * (node_num[0]-1) + j - 1
-                    #                 spatial_feat_inds.append(ind)
-                    #         node_num = [len(choose_inds)]
-                    #         features = features[choose_inds,:]
-                    #         spatial_feat = spatial_feat[spatial_feat_inds,:]
-                    #         word2vec = word2vec[choose_inds,:]
-                    #         roi_labels = [roi_labels[0][int(i)] for i in choose_inds]
-                    #         node_labels = node_labels[choose_inds, :]
-
-                    #         # training
-                    #         model.zero_grad()
-                    #         outputs = model(node_num, features, spatial_feat, word2vec, roi_labels, choose_nodes=None, remove_nodes=None)
-                    #         loss1 = criterion(outputs, node_labels.float())
-                    #         loss1.backward()
-                    #         optimizer.step()
-                    #     except Exception as e:
-                    #         import ipdb; ipdb.set_trace()
-                    #         print(e)
