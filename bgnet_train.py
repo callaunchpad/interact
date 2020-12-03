@@ -66,10 +66,12 @@ def run_model(args, data_const):
         model.load_state_dict(checkpoints['state_dict'])
     model.to(device)
     # # build optimizer && criterion  
+    l2_weight_decay = 0.0001
+    # l2_weight_decay = 0
     if args.optim == 'sgd':
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0)
+        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=l2_weight_decay)
     else:
-        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=l2_weight_decay)
 
     criterion = nn.BCEWithLogitsLoss()
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.3) #the scheduler divides the lr by 10 every 150 epochs
@@ -120,7 +122,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
         for phase in ['train', 'val']:
             start_time = time.time()
             running_loss = 0.0
-            running_correct = 0
+            running_correct_single = 0
+            running_correct_multi = 0
             running_total = 0
             idx = 0
             
@@ -182,13 +185,27 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
 
                     label_iter = 0
                     for i in range(args.batch_size):
+                        running_total += 1
                         curr_preds = preds_conf[label_iter:label_iter + edge_num[i]]
                         curr_truth = truth_conf[label_iter:label_iter + edge_num[i]]
-                        top_pred = preds_id[torch.argmax(curr_preds)]
-                        top_truth = truth_id[torch.argmax(curr_truth)]
+                        top_pred = preds_id[label_iter + torch.argmax(curr_preds)]
+                        top_truth = truth_id[label_iter + torch.argmax(curr_truth)]
 
                         if top_pred == top_truth:
-                            running_correct += 1
+                            running_correct_single += 1
+
+                        all_labels = set()
+                        for edge in edge_labels[label_iter:label_iter + edge_num[i]]:
+                            for label in edge.nonzero():
+                                all_labels.add(label.item())
+
+                        if top_pred.item() in all_labels:
+                            running_correct_multi += 1
+
+                        # if top_pred in truth_id[label_iter:label_iter + edge_num[i]]:
+                        #     running_correct_multi += 1
+
+                        label_iter += edge_num[i]
 
                     # for i in range(len(preds)):
                     #     running_total += 1
@@ -212,13 +229,27 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
 
                         label_iter = 0
                         for i in range(args.batch_size):
+                            running_total += 1
                             curr_preds = preds_conf[label_iter:label_iter + edge_num[i]]
                             curr_truth = truth_conf[label_iter:label_iter + edge_num[i]]
-                            top_pred = preds_id[torch.argmax(curr_preds)]
-                            top_truth = truth_id[torch.argmax(curr_truth)]
+                            top_pred = preds_id[label_iter + torch.argmax(curr_preds)]
+                            top_truth = truth_id[label_iter + torch.argmax(curr_truth)]
 
                             if top_pred == top_truth:
-                                running_correct += 1
+                                running_correct_single += 1
+
+                            all_labels = set()
+                            for edge in edge_labels[label_iter:label_iter + edge_num[i]]:
+                                for label in edge.nonzero():
+                                    all_labels.add(label.item())
+
+                            if top_pred.item() in all_labels:
+                                running_correct_multi += 1
+
+                            # if top_pred in truth_id[label_iter:label_iter + edge_num[i]]:
+                            #     running_correct_multi += 1
+
+                            label_iter += edge_num[i]
 
                         # preds = torch.argmax(outputs, dim=1)
                         # ground_truth = torch.argmax(edge_labels, dim=1)
@@ -253,15 +284,18 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
             # calculate the loss and accuracy of each epoch
             epoch_loss = running_loss / len(dataset[phase])
             # epoch_accuracy = 1.0 * running_correct / running_total
-            epoch_accuracy = 1.0 * running_correct / args.batch_size
+            epoch_accuracy_single = 1.0 * running_correct_single / running_total
+            epoch_accuracy_multi = 1.0 * running_correct_multi / running_total
             # import ipdb; ipdb.set_trace()
             # log trainval datas, and visualize them in the same graph
             if phase == 'train':
                 train_loss = epoch_loss 
-                train_accuracy = epoch_accuracy
+                train_accuracy_single = epoch_accuracy_single
+                train_accuracy_multi = epoch_accuracy_multi
                 HicoDataset.displaycount() 
             else:
-                writer.add_scalars('trainval_loss_accuracy', {'train': train_accuracy, 'val': epoch_accuracy}, epoch)
+                writer.add_scalars('trainval_loss_accuracy_single', {'train': train_accuracy_single, 'val': epoch_accuracy_single}, epoch)
+                writer.add_scalars('trainval_loss_accuracy_multi', {'train': train_accuracy_multi, 'val': epoch_accuracy_multi}, epoch)
                 writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': epoch_loss}, epoch)
             # print data
             if (epoch % args.print_every) == 0:
