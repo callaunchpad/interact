@@ -66,7 +66,7 @@ def run_model(args, data_const):
         model.load_state_dict(checkpoints['state_dict'])
     model.to(device)
     # # build optimizer && criterion  
-    l2_weight_decay = 0.0001
+    l2_weight_decay = 0.00005
     # l2_weight_decay = 0
     if args.optim == 'sgd':
         optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=l2_weight_decay)
@@ -124,6 +124,7 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
             running_loss = 0.0
             running_correct_single = 0
             running_correct_multi = 0
+            running_correct_top5 = 0
             running_total = 0
             idx = 0
             
@@ -141,6 +142,24 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                 spatial_feat = train_data['spatial_feat']
                 word2vec = train_data['word2vec']
                 features, spatial_feat, word2vec, edge_labels = features.to(device), spatial_feat.to(device), word2vec.to(device), edge_labels.to(device)
+
+                #### inspecting labels
+                # total_labels = 0
+                # blank_edges = 0
+                # max_labels = 0
+                # label_iter = 0
+
+                # for i in range(args.batch_size):
+                #     curr_labels = edge_labels[label_iter:label_iter + edge_num[i]]
+                #     curr_total = 0
+                #     for edge in curr_labels:
+                #         curr_total += len(torch.nonzero(edge))
+                #         if len(torch.nonzero(edge)) == 0:
+                #             blank_edges += 1
+                #     if curr_total > max_labels:
+                #         max_labels = curr_total
+                #     total_labels += curr_total
+                #     label_iter += edge_num[i]
 
                 for i in range(args.batch_size):
                     parsed_img_name = img_name[i].split(".")[0]
@@ -202,6 +221,17 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         if top_pred.item() in all_labels:
                             running_correct_multi += 1
 
+                        if len(curr_preds) > 5:
+                            _, top5_idx = torch.topk(curr_preds, 5)
+                        else:
+                            top5_idx = torch.Tensor([i for i in range(len(curr_preds))])
+
+                        for idx in top5_idx:
+                            curr_id = preds_id[label_iter + int(idx.item())]
+                            if curr_id.item() in all_labels:
+                                running_correct_top5 += 1
+                                break
+
                         # if top_pred in truth_id[label_iter:label_iter + edge_num[i]]:
                         #     running_correct_multi += 1
 
@@ -223,6 +253,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                     with torch.no_grad():
                         outputs = model(node_num, features, spatial_feat, word2vec, roi_labels, bg=res_background_input, validation=True)
                         loss = criterion(outputs, edge_labels.float())
+
+                        
                         
                         preds_conf, preds_id = torch.max(outputs, dim=1)
                         truth_conf, truth_id = torch.max(edge_labels, dim=1)
@@ -245,6 +277,17 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
 
                             if top_pred.item() in all_labels:
                                 running_correct_multi += 1
+                            
+                            if len(curr_preds) > 5:
+                                _, top5_idx = torch.topk(curr_preds, 5)
+                            else:
+                                top5_idx = torch.Tensor([i for i in range(len(curr_preds))])
+
+                            for idx in top5_idx:
+                                curr_id = preds_id[label_iter + int(idx.item())]
+                                if curr_id.item() in all_labels:
+                                    running_correct_top5 += 1
+                                    break
 
                             # if top_pred in truth_id[label_iter:label_iter + edge_num[i]]:
                             #     running_correct_multi += 1
@@ -269,8 +312,8 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
                         raw_outputs = nn.Sigmoid()(outputs[0:int(edge_num[0])])
                         raw_outputs = raw_outputs.cpu().detach().numpy()
                         class_img = vis_img(image, det_boxes, roi_labels, roi_scores)
-                        class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.7)
-                        action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.7)
+                        class_img = vis_img(image, det_boxes[0], roi_labels[0], roi_scores[0], edge_labels[0:int(edge_num[0])].cpu().numpy(), score_thresh=0.4)
+                        action_img = vis_img(image_temp, det_boxes[0], roi_labels[0], roi_scores[0], raw_outputs, score_thresh=0.4)
                         # print(class_img)
                         # print(class_img.shape)
                         writer.add_image('gt_detection', np.array(class_img).transpose(2,0,1))
@@ -286,16 +329,19 @@ def epoch_train(model, dataloader, dataset, criterion, optimizer, scheduler, dev
             # epoch_accuracy = 1.0 * running_correct / running_total
             epoch_accuracy_single = 1.0 * running_correct_single / running_total
             epoch_accuracy_multi = 1.0 * running_correct_multi / running_total
+            epoch_accuracy_top5 = 1.0 * running_correct_top5 / running_total
             # import ipdb; ipdb.set_trace()
             # log trainval datas, and visualize them in the same graph
             if phase == 'train':
                 train_loss = epoch_loss 
                 train_accuracy_single = epoch_accuracy_single
                 train_accuracy_multi = epoch_accuracy_multi
+                train_accuracy_top5 = epoch_accuracy_top5
                 HicoDataset.displaycount() 
             else:
                 writer.add_scalars('trainval_loss_accuracy_single', {'train': train_accuracy_single, 'val': epoch_accuracy_single}, epoch)
                 writer.add_scalars('trainval_loss_accuracy_multi', {'train': train_accuracy_multi, 'val': epoch_accuracy_multi}, epoch)
+                writer.add_scalars('trainval_loss_accuracy_top5', {'train': train_accuracy_top5, 'val': epoch_accuracy_top5}, epoch)
                 writer.add_scalars('trainval_loss_epoch', {'train': train_loss, 'val': epoch_loss}, epoch)
             # print data
             if (epoch % args.print_every) == 0:
