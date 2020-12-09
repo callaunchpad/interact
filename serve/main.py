@@ -193,8 +193,8 @@ async def HOCNN_predict(image: UploadFile = File(...)):
     if len(frcnn_objs) == 0:
         frcnn_pred = None
     else:
-        frcnn_pred = modelObjs[0]
-
+        frcnn_pred = frcnn_objs[0]
+	
     if frcnn_pred in modelObjs:  # if fasterrcnn obj exists within predictions, likely that prediction is most correct
         ind = modelObjs.index(frcnn_pred)
         frcnn_str = modelPreds[ind]['object'] + ' ' + modelPreds[ind]['verb']
@@ -202,8 +202,8 @@ async def HOCNN_predict(image: UploadFile = File(...)):
         if not frcnn_pred:
             frcnn_str = 'no objects detected by faster-rcnn!'
         else:                   # MAYBE TODO: sometimes multiple verbs correct, not always first one idk
-            frcnn_str = modelObjs[0] + ' ' + modelPreds[ind]['verb']
-    return_predictions['fasterrcnn_object'] = frcnn_str # idk, change 
+            frcnn_str = frcnn_pred + ' ' + modelPreds[0]['verb']
+    return_predictions['fasterrcnn_object'] = frcnn_str # idk, change
 
     return return_predictions
 
