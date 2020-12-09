@@ -1,6 +1,8 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 # Set up custom environment before nearly anything else is imported
 # NOTE: this should be the first import (no not reorder)
+# import sys
+# sys.path.insert(0,'..')
 from maskrcnn_benchmark.utils.env import setup_environment  # noqa F401 isort:skip
 
 import argparse
@@ -8,6 +10,9 @@ import os
 import pickle
 import logging
 import glob
+import json
+from random import randint
+import cv2
 
 import torch
 from PIL import Image
@@ -27,6 +32,8 @@ from maskrcnn_benchmark.utils.miscellaneous import mkdir
 from maskrcnn_benchmark.config.paths_catalog import DatasetCatalog
 from maskrcnn_benchmark.utils.Generate_HICO_detection import Generate_HICO_detection
 from maskrcnn_benchmark.data.datasets.evaluation.hico.hico_compute_mAP import compute_hico_map
+from maskrcnn_benchmark.utils.bbox_utils import *
+
 
 # Check if we can enable mixed-precision via apex.amp
 try:
@@ -117,22 +124,124 @@ def bbox_trans(human_box_ori, object_box_ori, size=64):
 
     return np.round(human_box), np.round(object_box)
 
-
-def generate_spatial(human_box, object_box):
+def generate_spatial(human_box_aug, object_box_aug):
     # human_box = human_box.numpy()
     # object_box = object_box.numpy()
-    H, O = bbox_trans(human_box, object_box)
 
     Pattern = np.zeros((2, 64, 64))
-    Pattern[0, int(H[1]):int(H[3]) + 1, int(H[0]):int(H[2]) + 1] = 1
-    Pattern[1, int(O[1]):int(O[3]) + 1, int(O[0]):int(O[2]) + 1] = 1
+    Pattern[0, int(human_box_aug[1]):int(human_box_aug[3]) + 1, int(human_box_aug[0]):int(human_box_aug[2]) + 1] = 1
+    Pattern[1, int(object_box_aug[1]):int(object_box_aug[3]) + 1, int(object_box_aug[0]):int(object_box_aug[2]) + 1] = 1
 
     return Pattern
 
+def get_pose_image(pose_dir, image_id, human_box, im_shape):
+    POSE_PAIRS = ((1,8),(1,11),(1,2),(1,5),(5,6),(6,7),(2,3),(3,4),(8,9),(9,10),(11,12),(12,13),(0,1),(0,14),(14,16),(0,15),(15,16))
+    pose_img_path = os.path.join(pose_dir, "HICO_test2015_%08d_keypoints.json" % image_id)
+    with open(pose_img_path) as f:
+        pose_data = json.load(f)
+    ret = {}
+    human_poses = [
+        np.reshape(np.array(pose['pose_keypoints_2d']),(-1,3)) 
+        for pose in pose_data['people']
+    ]
+    pose_boxes = [get_pose_box(pose) for pose in human_poses]
+    pose_boxes_aug = [augment_box_one(box, im_shape) for box in pose_boxes]
+    person_id = assign_pose(human_box, pose_boxes)
+    if person_id == -1:
+        return np.zeros((64, 64, 1))
+    person = pose_data['people'][person_id]
+    pose_img = np.zeros((64, 64, 1))
+    pose_data_2d = person['pose_keypoints_2d']
+    width = im_shape[1]
+    height = im_shape[0]
+    for inner_point in range(0, len(pose_data_2d), 3):
+        x, y, c = pose_data_2d[inner_point], pose_data_2d[inner_point + 1], pose_data_2d[inner_point + 2]
+        if c > 0:
+            pose_img = cv2.circle(pose_img, (int(64*x//width), int(64*y//height)), 10, 1, \
+                                    thickness=-1, lineType=cv2.FILLED)
+    for i in POSE_PAIRS:
+        point0 = i[0]
+        point1 = i[1]
+        x0, y0, c0 = pose_data_2d[point0], pose_data_2d[point0 + 1], pose_data_2d[point0 + 2]
+        x1, y1, c1 = pose_data_2d[point1], pose_data_2d[point1 + 1], pose_data_2d[point1 + 2]
+        if (c0 >0 and c1>0):
+            pose_img = cv2.line(pose_img, (int(64*x0//width), int(64*y0//height)), \
+                                (int(64*x1//width), int(64*y1//height)), 1, 3)
+    return pose_img
 
-def im_detect(model, image_id, Test_RCNN, word_embeddings, object_thres, human_thres, detection, device, opt):
+
+def augment_box_one(bbox, shape):
+
+    height = bbox[3] - bbox[1]
+    width = bbox[2] - bbox[0]
+
+    y_center = (bbox[3] + bbox[1]) / 2
+    x_center = (bbox[2] + bbox[0]) / 2
+
+    thres = 0.7
+
+    for count in range(20):
+
+        ratio = 1 + randint(-10, 10) * 0.01
+
+        y_shift = randint(-np.floor(height), np.floor(height)) * 0.1
+        x_shift = randint(-np.floor(width), np.floor(width)) * 0.1
+
+        x1 = max(0, x_center + x_shift - ratio * width / 2)
+        x2 = min(shape[1] - 1, x_center + x_shift + ratio * width / 2)
+        y1 = max(0, y_center + y_shift - ratio * height / 2)
+        y2 = min(shape[0] - 1, y_center + y_shift + ratio * height / 2)
+
+        if bbox_iou(bbox, np.array([x1, y1, x2, y2])) > thres:
+            box = np.array([x1, y1, x2, y2]).astype(np.float32)
+            return box
+    return bbox
+
+def bbox_iou(boxA, boxB):
+    ixmin = np.maximum(boxA[0], boxB[0])
+    iymin = np.maximum(boxA[1], boxB[1])
+    ixmax = np.minimum(boxA[2], boxB[2])
+    iymax = np.minimum(boxA[3], boxB[3])
+    iw = np.maximum(ixmax - ixmin + 1., 0.)
+    ih = np.maximum(iymax - iymin + 1., 0.)
+    inters = iw * ih
+
+    # union
+    uni = ((boxB[2] - boxB[0] + 1.) * (boxB[3] - boxB[1] + 1.) +
+            (boxA[2] - boxA[0] + 1.) *
+            (boxA[3] - boxA[1] + 1.) - inters)
+
+    overlaps = inters / uni
+    return overlaps
+
+def get_pose_box(pose):
+        valid_mask = pose[:,2] > 0  # consider points with non-zero confidence
+        if not np.any(valid_mask):
+            return np.zeros([4])
+        keypoints = pose[valid_mask,:2]
+        x1,y1 = np.amin(keypoints,0)
+        x2,y2 = np.amax(keypoints,0)
+        box = np.array([x1,y1,x2,y2])
+        return box
+
+def assign_pose(human_box, pose_boxes):
+    max_idx = -1
+    max_frac_inside = 0
+    found_match = False
+    for i, pose_box in enumerate(pose_boxes):
+        iou,intersection,union = compute_iou(human_box,pose_box,True)
+        pose_area = compute_area(pose_box)
+        frac_inside = intersection / pose_area
+        if frac_inside > max_frac_inside:
+            max_frac_inside = frac_inside
+            max_idx = i
+            found_match = True
+    return max_idx
+
+def im_detect(model, pose_dir, image_id, Test_RCNN, word_embeddings, object_thres, human_thres, detection, device, opt):
     ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     DATA_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'Data'))
+    POSE_DIR = os.path.abspath(os.path.join(pose_dir))
     im_file = os.path.join(DATA_DIR, 'hico_20160224_det', 'images', 'test2015', 'HICO_test2015_' + (str(image_id)).zfill(8) + '.jpg')
     img_original = Image.open(im_file)
     img_original = img_original.convert('RGB')
@@ -187,19 +296,26 @@ def im_detect(model, image_id, Test_RCNN, word_embeddings, object_thres, human_t
             object_boxlist = BoxList(object_boxes, img_original.size, mode="xyxy")  # image_size=(width, height)
 
             img, human_boxlist, object_boxlist = transforms(img_original, human_boxlist, object_boxlist)
-
+            
             spatials = []
+            human_poses = []
             for human_box, object_box in zip(human_boxlist.bbox, object_boxlist.bbox):
-                ho_spatial = generate_spatial(human_box.numpy(), object_box.numpy()).reshape(1, 2, 64, 64)
+                h_aug, o_aug = bbox_trans(human_box.numpy(), object_box.numpy())
+                ho_spatial = generate_spatial(h_aug, o_aug).reshape(1, 2, 64, 64)
                 spatials.append(ho_spatial)
+                pose_im_aug = get_pose_image(pose_dir, image_id, h_aug, im_shape)
+                human_poses.append(pose_im_aug)
+            
+            num_humans = len(human_boxlist)
             blobs['spatials'] = torch.FloatTensor(spatials).reshape(-1, 2, 64, 64)
+            blobs['poses'] = torch.FloatTensor(human_poses).reshape(num_humans, 1, 64, 64)
             blobs['human_boxes'], blobs['object_boxes'] = (human_boxlist,), (object_boxlist,)
             blobs['object_word_embeddings'] = torch.FloatTensor(O_vec).reshape(pos_num, 300)
 
             for key in blobs.keys():
                 if not isinstance(blobs[key], int) and not isinstance(blobs[key], tuple):
                     blobs[key] = blobs[key].to(device)
-                elif isinstance(blobs[key], tuple):
+                elif isinstance(blobs[key], tuple): 
                     blobs[key] = [boxlist.to(device) for boxlist in blobs[key]]
 
             image_list = to_image_list(img, cfg.DATALOADER.SIZE_DIVISIBILITY)
@@ -228,11 +344,10 @@ def im_detect(model, image_id, Test_RCNN, word_embeddings, object_thres, human_t
 
     detection[image_id] = This_human
 
-
-
 def run_test(
             model,
             dataset_name=None,
+            pose_dir=None,
             test_detection=None,
             word_embeddings=None,
             output_file=None,
@@ -260,7 +375,7 @@ def run_test(
         image_id = int(line[-9:-4])
 
         if image_id in test_detection:
-            im_detect(model, image_id, test_detection, word_embeddings, object_thres, human_thres, detection, device, opt)
+            im_detect(model, pose_dir, image_id, test_detection, word_embeddings, object_thres, human_thres, detection, device, opt)
 
     # wait for all processes to complete before measuring the time
     synchronize()
@@ -338,6 +453,7 @@ def main():
     print('prior flag: {}'.format(args.prior_flag))
 
     ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    DATA_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'Data'))
     args.config_file = os.path.join(ROOT_DIR, args.config_file)
 
     cfg.merge_from_file(args.config_file)
@@ -388,6 +504,7 @@ def main():
         data = DatasetCatalog.get(dataset_name)
         data_args = data["args"]
         test_detection = pickle.load(open(data_args['test_detection_file'], "rb"), encoding='latin1')
+        pose_dir = data_args['pose_dir'] # definitely not the right place to put this
         word_embeddings = pickle.load(open(data_args['word_embedding_file'], "rb"), encoding='latin1')
         opt['thres_dic'] = pickle.load(open(data_args['threshold_dic'], "rb"), encoding='latin1')
         output_file = os.path.join(output_folder, 'detection.pkl')
@@ -400,6 +517,7 @@ def main():
         run_test(
             model,
             dataset_name=dataset_name,
+            pose_dir=pose_dir,
             test_detection=test_detection,
             word_embeddings=word_embeddings,
             output_file=output_file,

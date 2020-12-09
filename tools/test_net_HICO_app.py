@@ -401,7 +401,7 @@ def main():
     checkpointer = DetectronCheckpointer(cfg, model, save_dir=output_dir)
 
     if args.num_iteration != -1:
-        args.ckpt = os.path.join(cfg.OUTPUT_DIR, 'model_%07d.pth' % args.num_iteration)
+        args.ckpt = os.path.join(cfg.OUTPUT_DIR, 'model_app.pth')
     ckpt = cfg.MODEL.WEIGHT if args.ckpt is None else args.ckpt
     logger.info("Testing checkpoint {}".format(ckpt))
     _ = checkpointer.load(ckpt, use_latest=args.ckpt is None)
@@ -413,7 +413,7 @@ def main():
         for idx, dataset_name in enumerate(dataset_names):
             if args.num_iteration != -1:
                 output_folder = os.path.join(cfg.OUTPUT_DIR, "inference_ho", dataset_name,
-                                             "model_%07d" % args.num_iteration)
+                                             "model_app")
             else:
                 output_folder = os.path.join(cfg.OUTPUT_DIR, "inference_ho", dataset_name)
             mkdir(output_folder)

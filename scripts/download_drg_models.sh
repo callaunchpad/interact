@@ -11,5 +11,5 @@ python scripts/Download_data.py 1cBd6Y82CBnIVruLjGTYBM8efWLBu8OAd output/VCOCO/m
 echo "Downloading HICO-DET models"
 mkdir -p output/HICO
 python scripts/Download_data.py 1Z1Fall2x0yVoN2TBlTOeTzGML_0pZCqZ output/HICO/model_app.pth
-python scripts/Download_data.py 1jGfeD9RXCXOFdjyD-reyAGtspVfc4QgL output/HICO/model_sp_human.pth
-python scripts/Download_data.py 193UnCSlU_JwD9RTBnX8seDg09X4iWNqq output/HICO/model_sp_object.pth
+# python scripts/Download_data.py 1jGfeD9RXCXOFdjyD-reyAGtspVfc4QgL output/HICO/model_sp_human.pth
+# python scripts/Download_data.py 193UnCSlU_JwD9RTBnX8seDg09X4iWNqq output/HICO/model_sp_object.pth

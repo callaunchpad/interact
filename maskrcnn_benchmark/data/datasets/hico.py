@@ -47,7 +47,7 @@ class HICODataset(torch.utils.data.Dataset):
             img, human_boxlist, object_boxlist = self._transforms(img, human_boxlist, object_boxlist)
 
         spatials = []
-        poses = []
+        poses = [] # i dont think this line belongs here
         for human_box, object_box in zip(human_boxlist.bbox, object_boxlist.bbox):
             ho_spatial = self.generate_spatial(human_box.numpy(), object_box.numpy()).reshape(1, 2, 64, 64)
             spatials.append(ho_spatial)

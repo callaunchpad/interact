@@ -20,8 +20,12 @@ def add_bbox(img,bbox,color=[0,0,0],fill=False,alpha=1):
 
 def compute_area(bbox,invalid=None):
     x1,y1,x2,y2 = bbox
+    x1, x2, y1, y2 = abs(x1), abs(x2), abs(y1), abs(y2)
 
-    if (x2 <= x1) or (y2 <= y1):
+    if (x2 < x1) or (y2 < y1):
+        if(invalid == None):
+            print("invalid:", x1, x2, y1, y2)
+            return 1 
         area = invalid
     else:
         area = (x2 - x1 + 1) * (y2 - y1 + 1)

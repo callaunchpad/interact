@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import pickle
+import h5py
 from multiprocessing import Pool
 from maskrcnn_benchmark.utils.miscellaneous import mkdir, dump_json_object, load_json_object
 
@@ -100,7 +101,10 @@ def compute_pr(y_true, y_score, npos):
     sorted_y_true = [y for y, _ in
                      sorted(zip(y_true, y_score), key=lambda x: x[1], reverse=True)]
     tp = np.array(sorted_y_true)
-    fp = ~tp
+    if len(tp) != 0:
+        fp = ~tp
+    else:
+        fp = tp
     tp = np.cumsum(tp)
     fp = np.cumsum(fp)
     if npos == 0:
@@ -145,7 +149,9 @@ def eval_hoi(hoi_id, global_ids, gt_dets, pred_dets, out_dir, hoi_map_to_obj_vb)
         npos += len(candidate_gt_dets)
 
         image_id = int(global_id.split('_')[2])
-        det_this_image = pred_dets[image_id]
+        det_this_image = pred_dets.get(image_id, None)
+        if det_this_image == None:
+            continue
         obj_id = hoi_map_to_obj_vb[hoi_id]['object_id']
         verb_id = hoi_map_to_obj_vb[hoi_id]['verb_id']
 
@@ -155,7 +161,11 @@ def eval_hoi(hoi_id, global_ids, gt_dets, pred_dets, out_dir, hoi_map_to_obj_vb)
                 temp = {}
                 temp['human_box'] = inst_detection[0].tolist()
                 temp['object_box'] = inst_detection[1].tolist()
-                temp['score'] = inst_detection[3][verb_id] * inst_detection[4] * inst_detection[5][0]
+                # I think there was a discrepancy in the way the object and human branches were trained
+                if isinstance(inst_detection[5], list):
+                    temp['score'] = inst_detection[3][verb_id] * inst_detection[4] * inst_detection[5][0]
+                else:
+                    temp['score'] = inst_detection[3][verb_id] * inst_detection[4] * inst_detection[5]
                 hoi_det_this_image.append(temp)
 
         num_dets = len(hoi_det_this_image)
@@ -174,6 +184,11 @@ def eval_hoi(hoi_id, global_ids, gt_dets, pred_dets, out_dir, hoi_map_to_obj_vb)
             y_true.append(is_match)
             y_score.append(pred_det['score'])
             det_id.append((global_id, i))
+    
+    print("ytrue: ", y_true)
+    print("y_score", y_score)
+    print("det_id", det_id)
+    print("npos", npos)
 
     # Compute PR
     precision, recall = compute_pr(y_true, y_score, npos)
@@ -265,7 +280,7 @@ def compute_hico_map(out_dir, pred_hoi_dets, subset, num_processes=8):
 
     print(f'Begin mAP computation ...')
     output = p.starmap(eval_hoi, eval_inputs)
-    # output = eval_hoi(245, global_ids, gt_dets, pred_hoi_dets, out_dir, hoi_map_to_obj_vb)
+    # output = eval_hoi(19, global_ids, gt_dets, pred_hoi_dets, out_dir, hoi_map_to_obj_vb)
 
     p.close()
     p.join()
