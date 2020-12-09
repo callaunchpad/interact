@@ -1,0 +1,1 @@
+Copy from datasets/processed/hico/hico_word2vec.hdf5 to ./hico_word2vec.hdf5
