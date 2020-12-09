@@ -9,6 +9,8 @@ import numpy as np
 from PIL import Image
 import cv2
 import json
+import h5py
+import random
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from openpose.body import Body
 from model.cnn_model import HOCNN
 from model.cnn_with_pose import HOPOSECNN
+from model.bgnet_model import AGRNN
+
+from util import spatial
 
 print('[*] Beginning server startup!')
 
@@ -23,6 +28,7 @@ os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
 os.environ['CUDA_VISIBLE_DEVICES']='1' # Change this ID to an unused GPU
  
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print('Running on', device)
 
 '''
 Load models and required data
@@ -51,9 +57,43 @@ hoposecnn_model.eval()
 
 print('HOPOSECNN model loaded')
 
+# Cool Background Net
+cbgn_weights_name = 'bgnet_weights.pth'
+cbgn_weights_path = 'weights/cbgn/' + cbgn_weights_name
+
+cgbn_checkpoint = torch.load(cbgn_weights_path, map_location=device)
+cbgn_model = AGRNN(feat_type=cgbn_checkpoint['feat_type'], bias=cgbn_checkpoint['bias'], bn=cgbn_checkpoint['bn'], dropout=cgbn_checkpoint['dropout'], multi_attn=cgbn_checkpoint['multi_head'], layer=cgbn_checkpoint['layers'], diff_edge=cgbn_checkpoint['diff_edge']).to(device)
+cbgn_model.load_state_dict(cgbn_checkpoint['state_dict'])
+cbgn_model.eval()
+
+print('Cool Background Net model loaded')
+
+# Faster RCNN, OpenPose, and data lists
+
 faster_rcnn = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True).to(device)
 faster_rcnn.eval()
-print('Faster rcnn loaded')
+print('Faster rcnn for cnn models loaded')
+
+faster_rcnn_cbgn = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True, rpn_post_nms_top_n_test=200, \
+    box_batch_size_per_image=128, box_score_thresh=0.1, box_nms_thresh=0.3).to(device)
+faster_rcnn_cbgn.eval()
+
+outputs = []
+
+def hook(module, input, output):
+    outputs.clear()
+    outputs.append(output)
+
+def hook2(module, input, output):
+    outputs.append(output)
+ 
+def hook3(module, input, output):
+    outputs.append(output)
+
+faster_rcnn_cbgn.roi_heads.box_head.fc7.register_forward_hook(hook)
+faster_rcnn_cbgn.roi_heads.box_predictor.cls_score.register_forward_hook(hook2)
+faster_rcnn_cbgn.roi_heads.box_predictor.bbox_pred.register_forward_hook(hook3)
+print('Faster rcnn and hooks for cbgn loaded')
 
 body_estimation = Body('openpose/body_pose_model.pth')
 print('OpenPose loaded')
@@ -73,10 +113,23 @@ coco_dict = [
     'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
 ]
 
+verbs = ["adjust", "assemble", "block", "blow", "board", "break", "brush_with", "buy", "carry", "catch", "chase", 
+         "check", "clean", "control", "cook", "cut", "cut_with", "direct", "drag", "dribble", "drink_with", "drive",
+         "dry", "eat", "eat_at", "exit", "feed", "fill", "flip", "flush", "fly", "greet", "grind", "groom", "herd",
+         "hit", "hold", "hop_on", "hose", "hug", "hunt", "inspect", "install", "jump", "kick", "kiss", "lasso", 
+         "launch", "lick", "lie_on", "lift", "light", "load", "lose", "make", "milk", "move", "no_interaction",
+         "open", "operate", "pack", "paint", "park", "pay", "peel", "pet", "pick", "pick_up", "point", "pour",
+         "pull", "push", "race", "read", "release", "repair", "ride", "row", "run", "sail", "scratch", "serve",
+         "set", "shear", "sign", "sip", "sit_at", "sit_on", "slide", "smell", "spin", "squeeze", "stab", "stand_on",
+         "stand_under", "stick", "stir", "stop_at", "straddle", "swing", "tag", "talk_on", "teach", "text_on", "throw",
+         "tie", "toast", "train", "turn", "type_on", "walk", "wash", "watch", "wave", "wear", "wield", "zip"]
+
 with open('../datasets/processed/hico/hoi_list.json') as f:
     hoi_list = json.load(f)
+
+word2vec = h5py.File('word2vec/hico_word2vec.hdf5', 'r')
     
-print('COCO dictionary and HOI list loaded')
+print('COCO dictionary, verbs list, HOI list, and word2vec loaded')
 
 '''
 Initialize server and setup CORS
@@ -316,4 +369,105 @@ async def HOPOSECNN_predict(image: UploadFile = File(...)):
         prediction_conf = round(top5_confidence[i].item() * 100, 2)
         return_predictions[prediction_str] = prediction_conf
         
+    return return_predictions
+
+'''
+Cool Background Net prediction route
+'''
+@app.post("/api/cbgn/predict")
+async def HOPOSECNN_predict(image: UploadFile = File(...)):
+    try:
+        img_contents = await image.read()
+        # Convert string data to numpy array
+        np_img = np.fromstring(img_contents, np.uint8)
+        # Convert numpy array to image
+        parsed_img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+    except Exception as e:
+        return {'error': str(e)}
+
+    node_num = []
+    features = None
+    spatial_feat = None
+    word2vec_emb = None
+    roi_labels = None
+    bg = None
+
+    # Prepare for and pass through Faster RCNN
+    frcnn_inp_img = parsed_img / 255 # Faster RCNN needs image normalized on all channels
+    frcnn_img_tensor = torch.from_numpy(frcnn_inp_img)
+    frcnn_img_tensor = frcnn_img_tensor.permute([2,0,1]).float().to(device) # chw format
+    rcnn_input = [frcnn_img_tensor]
+    
+    out = faster_rcnn_cbgn(rcnn_input)[0]
+    feat_embeddings = outputs[0]
+    cls_prob = F.softmax(outputs[1])
+    cls_embeddings = {}
+    
+    for i in range(len(cls_prob)):
+        cls = int(torch.argmax(cls_prob[i]))
+        if cls != 0:
+            if cls in cls_embeddings:
+                cls_embeddings[cls].append(feat_embeddings[i])
+            else:
+                cls_embeddings[cls] = [feat_embeddings[i]]
+
+    embeddings = []
+    bboxes = None
+
+    for i in range(len(out['boxes'])):
+        if out['scores'][i] < .7:
+            bboxes = out['boxes'][:i].detach().cpu()
+            roi_labels = [out['labels'][:i].detach().cpu().numpy()]
+            break
+        emb = random.choice(cls_embeddings[out['labels'][i].item()])
+        embeddings.append(list(emb.cpu().detach().numpy()))
+        
+    features = torch.Tensor(embeddings).to(device)
+
+    img_wh = [parsed_img.shape[1], parsed_img.shape[0]]
+    spatial_feat = spatial.calculate_spatial_feats(bboxes, img_wh)
+    spatial_feat = torch.Tensor(spatial_feat).to(device)
+
+    word2vec_emb = np.empty((0,300))
+    for id in roi_labels[0]:
+        vec = word2vec[coco_dict[id]]
+        word2vec_emb = np.vstack((word2vec_emb, vec))
+    word2vec_emb = torch.Tensor(word2vec_emb).to(device)
+
+    mask = np.ones_like(parsed_img) * 255
+    for bbox in bboxes:
+        bbox = bbox.detach().cpu().numpy()
+        cv2.rectangle(mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 0), thickness=-1)
+    background_img = cv2.bitwise_and(parsed_img, mask, mask=None)
+    background_img_resize = cv2.resize(background_img, (64, 64), interpolation=cv2.INTER_AREA)
+    background_img_tensor = torch.from_numpy(background_img)
+    res_background_input = background_img_tensor.unsqueeze(0)
+    res_background_input = res_background_input.permute([0,3,1,2]).float().to(device)
+
+    with torch.no_grad():
+        node_num = [len(roi_labels[0])]
+        model_preds, batch_graph = cbgn_model(node_num, features, spatial_feat, word2vec_emb, roi_labels, bg=res_background_input, validation=True)
+        
+    model_preds = model_preds.detach().cpu()
+    model_preds = torch.sigmoid(model_preds)
+    preds = torch.Tensor()
+    confs = torch.Tensor()
+
+    edge_num = []
+    
+    for i in range(len(model_preds)):
+        conf, pred = torch.topk(model_preds[i], 5)
+        preds = torch.cat((preds, pred.float()))
+        confs = torch.cat((confs, conf.float()))
+        edge_num += [i for _ in range(5)]
+    
+    return_predictions = {}
+    _, top5_ids = torch.topk(confs, 5)
+    
+    for id in top5_ids:
+        verb = verbs[int(preds[id.item()].item())]
+        class_id = batch_graph.find_edges(edge_num[id.item()])[1].item()
+        object = coco_dict[class_id]
+        return_predictions[verb + ' ' + object] = round(confs[id].item(), 4)
+
     return return_predictions
