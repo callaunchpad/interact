@@ -83,7 +83,7 @@ class BGCNN(nn.Module):
                 nn.ReLU()
                 )
         self.drop2 = nn.Dropout(p=0.5)
-        self.fcn3 = nn.Linear(32, 117)
+        self.fcn3 = nn.Linear(117, 117)
 
     def forward(self, input):
         out = self.conv1(input)
@@ -100,8 +100,8 @@ class BGCNN(nn.Module):
         out = self.drop1(out)
         out = self.fcn2(out)
         out = self.drop2(out)
-        out = out.permute([1, 0])
         out = self.fcn3(out)
+        out = torch.sum(out, dim=0)
         return out
 
 class AGRNN(nn.Module):
@@ -272,9 +272,13 @@ class AGRNN(nn.Module):
                 batch_graph.apply_nodes(self.h_node_update, batch_h_node_list+batch_obj_node_list)
             batch_graph.apply_edges(self.edge_readout, tuple(zip(*(batch_readout_h_o_e_list+batch_readout_h_h_e_list))))
 
-        bg_output = self.BGCNN(bg)
+        # out = torch.unsqueeze(self.BGCNN(bg), dim=0)
+        # bg_output = out
+        # for i in range(116):
+        #     bg_output = torch.cat((bg_output, out), dim=0)
         batch_graph_readout = batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred']
-        batch_graph_readout_bg = torch.matmul(batch_graph_readout, bg_output)
+        # batch_graph_readout_bg = torch.matmul(batch_graph_readout, bg_output)
+        batch_graph_readout_bg = batch_graph_readout
 
         # import ipdb; ipdb.set_trace()
         if self.training or validation:
@@ -282,7 +286,7 @@ class AGRNN(nn.Module):
             # !NOTE: cannot use "batch_readout_h_o_e_list+batch_readout_h_h_e_list" because of the wrong order
             # print(batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred'].shape)
             # print(batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred'].shape)
-            return batch_graph_readout_bg
+            return batch_graph_readout_bg, batch_graph.nodes
         else:
             return batch_graph_readout_bg, \
                    batch_graph.nodes[batch_h_node_list].data['alpha'], \
