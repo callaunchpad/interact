@@ -134,7 +134,7 @@ window.onload = (_event) => {
             const predictionText = 'Faster-RCNN object: ' + parsedPredictions[predictionKey];
             CBGNResultsNode.appendChild(createParagraph(predictionText));
           }else{
-            const predictionText = '' + (i + 1) + ' ' + predictionKey + ' ' + parsedPredictions[predictionKey] + '%';
+            const predictionText = '' + (i + 1) + ' ' + predictionKey + ' ' + (parsedPredictions[predictionKey] * 100) + '%';
             CBGNResultsNode.appendChild(createParagraph(predictionText));
           }
       }
