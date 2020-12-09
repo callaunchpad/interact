@@ -7,12 +7,16 @@ import argparse
 import os
 import pickle
 import numpy as np
+from PIL import Image
+import cv2
+
 from tqdm import tqdm
 from maskrcnn_benchmark.utils.miscellaneous import mkdir
 from maskrcnn_benchmark.data.datasets.evaluation.hico.hico_compute_mAP import compute_hico_map
 
 verbfile = open('hico_list_vb.txt', 'r')
 VERB_LIST = verbfile.readlines()
+END = 20
 
 #TODO: LOAD THE IMAGE IN RUN TEST LIKE HOW THEY'RE LOADED IN IMDETECT USING THE IMAGE ID!!! 
 #THEN MAKE A COPY AND DO THE SUPERIMPOSING STUFF!! I can't run it bc i dont have data, its up to u eshaan
@@ -24,11 +28,24 @@ def run_test(
             output_file=None,
 ):
     detection = {}
+    # Below 3 lines unteested
+    ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    DATA_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'Data'))
+    POSE_DIR = os.path.abspath(os.path.join(pose_dir))
     for idx, image_id in enumerate(tqdm(sp_human_detection)):
+        #Below 3 cuts the iteration early at 20, untested
+        if (idx >= END):
+            print("ENDING EARLY")
+            break
         sp_detect_this_image_list = sp_human_detection[image_id]
         app_detect_this_image_list = app_detection[image_id]
         sp_object_detect_this_image_list = sp_object_detection[image_id]
         this_pair = []
+        #Below 4 lines untested
+        im_file = os.path.join(DATA_DIR, 'hico_20160224_det', 'images', 'test2015', 'HICO_test2015_' + (str(image_id)).zfill(8) + '.jpg')
+        img_original = Image.open(im_file)
+        img_original = img_original.convert('RGB')
+        img_copy = np.array(img_original)
         for sp_this_pair in sp_detect_this_image_list:
             for app_this_pair in app_detect_this_image_list:
                 # human box and object box are the same
@@ -43,8 +60,21 @@ def run_test(
                     break
 
             this_pair.append(sp_this_pair)
-        print(this_pair)
+        #VREY UNTESTED, puts top 1 interaction in image
+        img_copy = cv2.putText(img_copy, VERB_LIST[np.argmax(sp_this_pair[3])], font=cv2.FONT_HERSHEY_SIMPLEX, org = (50,50), fontScale = 5, color = (255, 0, 0))
+
+        # TODO: NEED TO PUT BOUNDING BOXES IN IMG_COPY eshaan this is up to you you need to see the bounding box format and create the bounding boxes using that.
+        # You may have to scale the bounding boxes back up
+
+        
+        #Lines below are untested, but they should save the new file to its appropriate newly created directory.
+        im_superimposed_file = os.path.join(DATA_DIR, 'hico_20160224_det', 'images', 'test2015', 'HICO_test2015_superimposed' + (str(image_id)).zfill(8) + '.jpg')
+        sup_image = Image.fromarray(img_copy, 'RGB')
+        sup_image.save(im_superimposed_file)
+
         detection[image_id] = this_pair
+
+
 
     pickle.dump(detection, open(output_file, "wb"))
 
