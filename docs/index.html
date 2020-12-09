@@ -73,6 +73,22 @@
             <div class="ui middle aligned stackable internally celled grid container">
                <h1 class="ui header">Demo</h1>
                <div class="row">
+                  <div class="column">
+                     <div class="ui center aligned grid segment centered">
+                        <div class="row">
+                              <h4 class="ui header">Example images to choose from. Please download them and submit them to the following demos!</h4>
+                        </div>
+                        <div class="row">
+                           <div class="four wide column">
+                              <div class="ui small image">
+                                 <img src="img/demo_1.png">
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+               <div class="row">
                   <div class="eight wide column">
                      <h3 class="ui header">HO-CNN</h3>
                      <p>Baseline model based off the original paper <a href="https://github.com/ywchao/ho-rcnn">here</a> and trained from scratch.</p>
@@ -87,6 +103,25 @@
                   <div class="six wide right floated column">
                      <h3 class="ui header">Results</h3>
                      <div id="hocnn-results" class="ui placeholder segment">
+                        <p>Submit an image to see the predictions!</p>
+                     </div>
+                  </div>
+               </div>
+               <div class="row">
+                  <div class="eight wide column">
+                     <h3 class="ui header">HOPOSE-CNN</h3>
+                     <p>A modification to the baseline CNN model where we add a human pose stream and weight each stream differently</p>
+                     <form id="hoposecnn-demo" class="ui form">
+                        <div class="field">
+                           <label>Image to Predict</label>
+                           <input type="file" name="image" required />
+                         </div>
+                         <button class="ui button" type="submit">Predict</button>
+                     </form>
+                  </div>
+                  <div class="six wide right floated column">
+                     <h3 class="ui header">Results</h3>
+                     <div id="hoposecnn-results" class="ui placeholder segment">
                         <p>Submit an image to see the predictions!</p>
                      </div>
                   </div>
