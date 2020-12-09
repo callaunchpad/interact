@@ -11,6 +11,12 @@ from tqdm import tqdm
 from maskrcnn_benchmark.utils.miscellaneous import mkdir
 from maskrcnn_benchmark.data.datasets.evaluation.hico.hico_compute_mAP import compute_hico_map
 
+verbfile = open('hico_list_vb.txt', 'r')
+VERB_LIST = verbfile.readlines()
+
+#TODO: LOAD THE IMAGE IN RUN TEST LIKE HOW THEY'RE LOADED IN IMDETECT USING THE IMAGE ID!!! 
+#THEN MAKE A COPY AND DO THE SUPERIMPOSING STUFF!! I can't run it bc i dont have data, its up to u eshaan
+
 def run_test(
             app_detection,
             sp_human_detection,
