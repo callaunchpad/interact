@@ -68,4 +68,34 @@ window.onload = (_event) => {
     }
 
     HOCNNDemoForm.addEventListener("submit", submitHOCNNDemoForm, false);
+
+    /**
+     * HOPOSECNN Form
+     */
+    const HOPOSECNNDemoForm = document.getElementById('hoposecnn-demo');
+
+    const submitHOPOSECNNDemoForm = async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(HOPOSECNNDemoForm);
+
+        const predictions = await fetch(config.api + 'hoposecnn/predict', {
+            'method': 'POST',
+            'body': formData
+        });
+        const parsedPredictions = await predictions.json();
+        const HOCNNResultsNode = document.getElementById('hoposecnn-results');
+        HOCNNResultsNode.innerHTML = '';
+
+        parsedPredictionsKeys = Object.keys(parsedPredictions);
+        for(let i = 0; i < parsedPredictionsKeys.length; i++){
+            const prediction = parsedPredictionsKeys[i];
+            const predictionText = '' + (i + 1) + ' ' + prediction + ' ' + parsedPredictions[prediction] + '%';
+            HOCNNResultsNode.appendChild(createParagraph(predictionText));
+        }
+
+        return false;
+    }
+
+    HOPOSECNNDemoForm.addEventListener("submit", submitHOPOSECNNDemoForm, false);
 };
