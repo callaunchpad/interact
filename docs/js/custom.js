@@ -57,11 +57,16 @@ window.onload = (_event) => {
         const HOCNNResultsNode = document.getElementById('hocnn-results');
         HOCNNResultsNode.innerHTML = '';
 
-        parsedPredictionsKeys = Object.keys(parsedPredictions);
+        const parsedPredictionsKeys = Object.keys(parsedPredictions);
         for(let i = 0; i < parsedPredictionsKeys.length; i++){
-            const prediction = parsedPredictionsKeys[i];
-            const predictionText = '' + (i + 1) + ' ' + prediction + ' ' + parsedPredictions[prediction] + '%';
-            HOCNNResultsNode.appendChild(createParagraph(predictionText));
+            const predictionKey = parsedPredictionsKeys[i];
+            if(predictionKey == 'fasterrcnn_object'){
+              const predictionText = 'Faster-RCNN object: ' + parsedPredictions[predictionKey];
+              HOCNNResultsNode.appendChild(createParagraph(predictionText));
+            }else{
+              const predictionText = '' + (i + 1) + ' ' + predictionKey + ' ' + parsedPredictions[predictionKey] + '%';
+              HOCNNResultsNode.appendChild(createParagraph(predictionText));
+            }
         }
 
         return false;
@@ -84,15 +89,20 @@ window.onload = (_event) => {
             'body': formData
         });
         const parsedPredictions = await predictions.json();
-        const HOCNNResultsNode = document.getElementById('hoposecnn-results');
-        HOCNNResultsNode.innerHTML = '';
+        const HOPOSECNNResultsNode = document.getElementById('hoposecnn-results');
+        HOPOSECNNResultsNode.innerHTML = '';
 
-        parsedPredictionsKeys = Object.keys(parsedPredictions);
+        const parsedPredictionsKeys = Object.keys(parsedPredictions);
         for(let i = 0; i < parsedPredictionsKeys.length; i++){
-            const prediction = parsedPredictionsKeys[i];
-            const predictionText = '' + (i + 1) + ' ' + prediction + ' ' + parsedPredictions[prediction] + '%';
-            HOCNNResultsNode.appendChild(createParagraph(predictionText));
-        }
+          const predictionKey = parsedPredictionsKeys[i];
+          if(predictionKey == 'fasterrcnn_object'){
+            const predictionText = 'Faster-RCNN object: ' + parsedPredictions[predictionKey];
+            HOPOSECNNResultsNode.appendChild(createParagraph(predictionText));
+          }else{
+            const predictionText = '' + (i + 1) + ' ' + predictionKey + ' ' + parsedPredictions[predictionKey] + '%';
+            HOPOSECNNResultsNode.appendChild(createParagraph(predictionText));
+          }
+      }
 
         return false;
     }
