@@ -21,7 +21,7 @@ python tools/test_net_HICO_sp_object_centric.py \
 APP_INTER_NUMBER_PAD="$( printf '%07d' "$APP_ITER_NUMBER" )"
 HUMAN_SP_INTER_NUMBER_PAD="$( printf '%07d' "$HUMAN_SP_ITER_NUMBER" )"
 OBJECT_SP_INTER_NUMBER_PAD="$( printf '%07d' "$OBJECT_SP_ITER_NUMBER" )"
-APP_PKL="output/HICO_app_only/inference_ho/hico_test/model_${APP_INTER_NUMBER_PAD}/detection_times.pkl"
+APP_PKL="output/HICO_app_only/inference_ho/hico_test/model_app/detection_times.pkl"
 HUMAN_SP_PKL="output/HICO_sp_human_only/inference_sp/hico_test/model_${HUMAN_SP_INTER_NUMBER_PAD}/detection.pkl"
 OBJECT_SP_PKL="output/HICO_sp_object_only/inference_sp/hico_test_object_centric/model_${OBJECT_SP_INTER_NUMBER_PAD}/detection.pkl"
 

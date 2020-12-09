@@ -37,7 +37,7 @@ def run_test(
                     break
 
             this_pair.append(sp_this_pair)
-
+        print(this_pair)
         detection[image_id] = this_pair
 
     pickle.dump(detection, open(output_file, "wb"))

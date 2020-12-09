@@ -71,7 +71,12 @@ def main():
     # Visualization
     print(result_dict)
     composite = coco_demo.run_on_opencv_image(img)
-    cv2.imwrite('test.png', composite)
+    cv2.imwrite('./demo/test.png', composite)
+
+    # Print out prediction
+    preds = coco_demo.compute_prediction(img)
+    top_preds = coco_demo.select_top_predictions(preds)
+    print("prediction: ",top_preds)
 
 
 if __name__ == "__main__":

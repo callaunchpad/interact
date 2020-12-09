@@ -142,7 +142,7 @@ class COCODemo(object):
         self.cfg = cfg.clone()
         self.model = build_detection_model(cfg)
         self.model.eval()
-        self.device = torch.device(cfg.MODEL.DEVICE)
+        self.device = torch.device("cuda") #cfg.MODEL.DEVICE)
         self.model.to(self.device)
         self.min_image_size = min_image_size
 
