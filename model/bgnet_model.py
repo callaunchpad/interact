@@ -286,7 +286,7 @@ class AGRNN(nn.Module):
             # !NOTE: cannot use "batch_readout_h_o_e_list+batch_readout_h_h_e_list" because of the wrong order
             # print(batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred'].shape)
             # print(batch_graph.edges[tuple(zip(*batch_readout_edge_list))].data['pred'].shape)
-            return batch_graph_readout_bg, batch_graph.nodes
+            return batch_graph_readout_bg, batch_graph
         else:
             return batch_graph_readout_bg, \
                    batch_graph.nodes[batch_h_node_list].data['alpha'], \
