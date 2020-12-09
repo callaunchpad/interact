@@ -108,4 +108,39 @@ window.onload = (_event) => {
     }
 
     HOPOSECNNDemoForm.addEventListener("submit", submitHOPOSECNNDemoForm, false);
+
+    /**
+     * Cool Background Net Form
+     */
+    const CBGNDemoForm = document.getElementById('cbgn-demo');
+
+    const submitCBGNDemoForm = async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(CBGNDemoForm);
+
+        const predictions = await fetch(config.api + 'cbgn/predict', {
+            'method': 'POST',
+            'body': formData
+        });
+        const parsedPredictions = await predictions.json();
+        const CBGNResultsNode = document.getElementById('cbgn-results');
+        CBGNResultsNode.innerHTML = '';
+
+        const parsedPredictionsKeys = Object.keys(parsedPredictions);
+        for(let i = 0; i < parsedPredictionsKeys.length; i++){
+          const predictionKey = parsedPredictionsKeys[i];
+          if(predictionKey == 'fasterrcnn_object'){
+            const predictionText = 'Faster-RCNN object: ' + parsedPredictions[predictionKey];
+            CBGNResultsNode.appendChild(createParagraph(predictionText));
+          }else{
+            const predictionText = '' + (i + 1) + ' ' + predictionKey + ' ' + parsedPredictions[predictionKey] + '%';
+            CBGNResultsNode.appendChild(createParagraph(predictionText));
+          }
+      }
+
+        return false;
+    }
+
+    CBGNDemoForm.addEventListener("submit", submitCBGNDemoForm, false);
 };
