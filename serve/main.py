@@ -119,6 +119,7 @@ async def HOCNN_predict(image: UploadFile = File(...)):
     frcnn_output = faster_rcnn(rcnn_input)[0]
     
     human_bboxes, object_bboxes = [], []
+    frcnn_objs = []
     object_dic = {}
     for i in range(len(frcnn_output['boxes'])):
         if frcnn_output['scores'][i] < .7:
@@ -129,6 +130,7 @@ async def HOCNN_predict(image: UploadFile = File(...)):
         else: 
             object_bboxes.append(bbox)
             object_dic[coco_dict[frcnn_output['labels'][i]]] = bbox
+            frcnn_objs.append(coco_dict[frcnn_output['labels'][i]])
             
     # Apply masks using Faster RCNN output
     human_mask = np.zeros_like(parsed_img)
@@ -177,12 +179,32 @@ async def HOCNN_predict(image: UploadFile = File(...)):
     
     return_predictions = {}
 
+    modelPreds, modelObjs = [], []
     for i in range(len(top5_idx)):
         prediction = hoi_list[top5_idx[i]]
+        modelPreds.append(prediction)
+        modelObjs.append(prediction['object'])
+
         prediction_str = prediction['object'] + ' ' + prediction['verb']
         prediction_conf = round(top5_confidence[i].item() * 100, 2)
         return_predictions[prediction_str] = prediction_conf
-        
+    
+    # do faster rcnn integration logic
+    if len(frcnn_objs) == 0:
+        frcnn_pred = None
+    else:
+        frcnn_pred = objects[0]
+
+    if frcnn_pred in modelObjs:  # if fasterrcnn obj exists within predictions, likely that prediction is most correct
+        ind = modelObjs.index(fasterPred)
+        frcnn_str = modelPreds[ind]['object'] + ' ' + modelPreds[ind]['verb']
+    else:
+        if not frcnn_pred:
+            frcnn_str = 'no objects detected by faster-rcnn!'
+        else:                   # MAYBE TODO: sometimes multiple verbs correct, not always first one idk
+            frcnn_str = objects[0] + ' ' + modelPreds[ind]['verb']
+    return_predictions[frcnn_str] = 'faster-rcnn implementation' # idk, change
+
     return return_predictions
 
 '''
