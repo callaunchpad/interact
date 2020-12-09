@@ -467,9 +467,9 @@ async def CBGN_predict(image: UploadFile = File(...)):
     for id in top5_ids:
         verb = verbs[int(preds[id.item()].item())]
         class_ids = batch_graph.find_edges(edge_num[id.item()])
-	id_1, id_2 = class_ids[0].item(), class_ids[1].item()
-	label_1, label_2 = roi_labels[0][id_1], roi_labels[0][id_2]
-	object = coco_dict[label_2] if label_1 == 1 else coco_dict[label_1]
+        id_1, id_2 = class_ids[0].item(), class_ids[1].item()
+        label_1, label_2 = roi_labels[0][id_1], roi_labels[0][id_2]
+        object = coco_dict[label_2] if label_1 == 1 else coco_dict[label_1]
         return_predictions[verb + ' ' + object] = round(confs[id].item(), 4)
 
     return return_predictions
